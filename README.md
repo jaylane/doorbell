@@ -57,7 +57,7 @@ The boxes read `[x]` on, `[ ]` off and `[-]` for a mixed group. The "every track
 
 Every press saves at once to `settings.json` beside the shared state, and the pane shows `saved` or `⚠ not saved` next to the defaults. Other sessions pick the change up within 10 seconds.
 
-Doorbell fetches the repo list once when the pane opens and shows at most 40 rows. Repos with a saved entry, or with something on the band, sort first, so the cap never hides them. When more match, the footer says `showing 40 of <n> · type to filter`. The filter box matches repo names in memory, so filtering makes no extra API calls.
+Doorbell fetches the repo list when the pane opens (your 500 most recently pushed repos, archived ones left out) and shows at most 40 rows. Repos with a saved entry, or with something on the band, are listed first. When more match, the footer says `showing 40 of <n> · type to filter`. The filter box matches repo names in memory, so filtering makes no extra API calls.
 
 ## How it works
 
