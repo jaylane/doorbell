@@ -81,7 +81,8 @@ One request per poll, containing:
 
 - `viewer { login }`
 - `mine`: `is:pr is:open author:@me archived:false`, first 30
-- `rr`: `is:pr is:open review-requested:@me archived:false`, first 30
+- `rr`: `is:pr is:open review-requested:@me archived:false`, first 100 (team and
+  code-owner requests make this the largest search for people on broad teams)
 - `merged`: `is:pr is:merged author:@me merged:>=<today − 14 days>`, first 50
 - one `repository(owner,name) { releases(first:5, CREATED_AT desc) }` alias per repo
   that has PRs waiting to ship
@@ -145,15 +146,17 @@ they never notify.
 - Merged PRs from the last 14 days enter `pendingShip` with `{repo, mergeOid}`,
   unless `s:<prId>` is already in `seen` (it shipped, possibly silently).
 - Each poll reads the latest non-draft, non-prerelease release for every repo with
-  waiting PRs. When its tag differs from `releases[repo]`, the next poll compares
-  every waiting PR in that repo against the tag.
+  waiting PRs. The next poll compares each waiting PR whose own last-compared tag
+  differs from that latest tag, so a PR that joins after its repo's tag was compared
+  (search index lag right after a merge) is still compared against it.
 - Compare status `BEHIND` or `IDENTICAL` means the tag contains the PR. Key
   `s:<prId>`; the PR leaves `pendingShip`. `AHEAD` and `DIVERGED` mean it does not.
 - A compare whose `ref` is null (the tag was deleted) counts as not contained and
   the tag as compared. A compare listed in `errors[]` is retried next poll.
-- A whole-query failure while compare aliases were present (GitHub returns only
-  `errors`, for example on an unknown commit) records those tags as compared, so
-  one bad compare cannot fail every poll after it.
+- A whole-query failure (GitHub returns only `errors`) gives up only the compare
+  aliases its error paths name. When the errors carry no path and compares were in
+  the query, the compares are retried once; a second consecutive pathless failure
+  records them as compared, so one bad compare cannot fail every poll after it.
 - First time a repo is seen: compare as usual, but mark contained PRs shipped
   silently, so already-released PRs neither notify nor linger.
 - Releases only. Repos with tags and no Releases are ignored **(default)**, because
@@ -209,11 +212,11 @@ The band yields to a survey (`hasSurvey`).
 
 | Condition | Detection | Action |
 |---|---|---|
-| Rate limit | HTTP 403 or 429, or "rate limit" in an error message when there is no `data` | Wait `Retry-After`, else until `X-RateLimit-Reset`, else 60 s doubling to 15 min |
+| Rate limit | HTTP 429, a 403 carrying `Retry-After`, `X-RateLimit-Remaining: 0` or rate-limit text, or "rate limit" in an error message when there is no `data` | Wait `Retry-After`, else until `X-RateLimit-Reset`, else 60 s doubling to 15 min |
 | Budget exhausted | `X-RateLimit-Remaining: 0` | Wait until `X-RateLimit-Reset` |
 | Offline | No status line, a 5xx, or `gh` still running at 30 s | 15 s, 30 s, 60 s, then every 5 min |
 | Query error | HTTP 200 with `errors` and no `data` | 60 s doubling to 15 min, and drop that poll's compares |
-| Not authenticated | HTTP 401, or gh exit code 4 | Retry every 5 min |
+| Not authenticated | HTTP 401, any other 403 (for example SSO), or gh exit code 4 | Retry every 5 min |
 | gh missing | No candidate runs | The session neither polls nor takes the lease; its own band shows the warning |
 | Partial | `errors[]` alongside `data` | Use the data. Items from failed aliases keep their previous state |
 | Overflow | `issueCount > first` on a search | Treat that search as failed (keep previous) and show `⚠ partial` |
