@@ -119,8 +119,9 @@ test('unobserved keys older than 30 days are pruned', async () => {
 test('failedSet flags searches whose issueCount exceeds the page size', async () => {
   const d = data({
     mine: { issueCount: 30, nodes: [] },
-    rr: { issueCount: 31, nodes: [] },
+    rr: { issueCount: 101, nodes: [] },
     merged: { issueCount: 51, nodes: [] },
   })
   expect([...failedSet(d, ['c0'])].sort()).toEqual(['c0', 'merged', 'rr'])
+  expect([...failedSet(data({ rr: { issueCount: 100, nodes: [] } }), [])]).toEqual([])
 })

@@ -20,7 +20,7 @@ const PR_FIELDS = {
  }`,
 }
 
-export const PAGE = { mine: 30, rr: 30, merged: 50 } as const
+export const PAGE = { mine: 30, rr: 100, merged: 50 } as const
 
 const search = (name: keyof typeof PR_FIELDS) =>
   ` ${name}: search(query:$${name},type:ISSUE,first:${PAGE[name as keyof typeof PAGE]}){ issueCount nodes{ ${PR_FIELDS[name]}}}`

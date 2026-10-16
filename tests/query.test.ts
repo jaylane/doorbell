@@ -28,3 +28,6 @@ test('quotes owner, name, tag and oid as GraphQL string literals', async () => {
   const s = state({ pendingShip: { P1: pending('acme/app', { mergeOid: 'abc' }) }, latest: { 'acme/app': 'v"1' } })
   expect(buildQuery(s, 0).query).toContain('qualifiedName:"refs/tags/v\\"1"')
 })
+test('rr pages 100 so broad-team requests do not overflow', async () => {
+  expect(buildQuery(state(), 0).query).toContain('rr: search(query:$rr,type:ISSUE,first:100)')
+})
