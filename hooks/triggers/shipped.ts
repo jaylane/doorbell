@@ -3,7 +3,7 @@ import { labelOf, type Ctx, type Event, type TriggerOut } from './types'
 
 type Out = TriggerOut & Pick<State, 'pendingShip' | 'releases' | 'latest'>
 type Release = { tagName: string; isDraft: boolean; isPrerelease: boolean }
-type Probe = { releases?: { nodes: Release[] }; ref?: { compare: { status: string } | null } | null } | null
+type Probe = { releases?: { nodes: Release[] | null } | null; ref?: { compare: { status: string } | null } | null } | null
 
 export function shipped(d: Data, aliases: Record<string, Alias>, ctx: Ctx): Out {
   const { prev } = ctx
@@ -22,7 +22,7 @@ export function shipped(d: Data, aliases: Record<string, Alias>, ctx: Ctx): Out 
   for (const [id, a] of Object.entries(aliases)) {
     const v = ctx.failed.has(id) ? null : (d[id] as Probe | undefined) ?? null
     if (a.kind === 'release') {
-      const tag = v?.releases?.nodes.find((r) => !r.isDraft && !r.isPrerelease)?.tagName
+      const tag = (v?.releases?.nodes ?? []).find((r) => !r.isDraft && !r.isPrerelease)?.tagName
       if (tag) latest[a.repo] = tag
       continue
     }

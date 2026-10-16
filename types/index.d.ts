@@ -66,11 +66,12 @@ export type MinePr = {
   isDraft: boolean
   reviewDecision: string | null
   repository: { nameWithOwner: string }
-  commits: { nodes: { commit: { committedDate: string; author: { user: { login: string } | null } | null } }[] }
-  latestOpinionatedReviews: { nodes: Opinion[] }
-  reviews: { nodes: Review[] }
-  reviewThreads: { nodes: { comments: { nodes: Comment[] } }[] }
-  comments: { nodes: Comment[] }
+  /** GitHub nulls a connection it fails to resolve, so each one is read defensively. */
+  commits: { nodes: { commit: { committedDate: string; author: { user: { login: string } | null } | null } }[] } | null
+  latestOpinionatedReviews: { nodes: Opinion[] } | null
+  reviews: { nodes: Review[] } | null
+  reviewThreads: { nodes: { comments: { nodes: Comment[] } | null }[] } | null
+  comments: { nodes: Comment[] } | null
 }
 export type RrPr = {
   id: string
@@ -82,7 +83,7 @@ export type RrPr = {
   repository: { nameWithOwner: string }
   reviewRequests: {
     nodes: { requestedReviewer: { __typename: string; login?: string; slug?: string } | null }[]
-  }
+  } | null
 }
 export type MergedPr = {
   id: string

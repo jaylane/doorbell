@@ -129,3 +129,12 @@ test('failedSet flags searches whose issueCount exceeds the page size', async ()
   expect([...failedSet(d, ['c0'])].sort()).toEqual(['c0', 'merged', 'rr'])
   expect([...failedSet(data({ rr: { issueCount: 100, nodes: [] } }), [])]).toEqual([])
 })
+
+test('null connections read as empty instead of throwing', async () => {
+  const mine = minePr({ reviews: null, latestOpinionatedReviews: null, reviewThreads: null, comments: null, commits: null })
+  const req = rrPr({ reviewRequests: null })
+  const aliases: Record<string, Alias> = { r0: { kind: 'release', repo: 'acme/app' } }
+  const d = { ...data({ mine: { issueCount: 1, nodes: [mine] }, rr: { issueCount: 1, nodes: [req] } }), r0: { releases: null } }
+  const out = run(state({ bootstrapped: true }), d as ReturnType<typeof data>, [], aliases)
+  expect(out.state.items.map((i) => i.kind)).toEqual(['review'])
+})

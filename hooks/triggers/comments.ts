@@ -7,11 +7,11 @@ const ms = (iso: string): number => Date.parse(iso)
 /** Latest of my own activity on the PR, judged by GitHub timestamps so a late poll cannot misorder a push. */
 export function watermarkOf(pr: MinePr, me: string): number {
   const mine = [
-    ...pr.comments.nodes,
-    ...pr.reviews.nodes,
-    ...pr.reviewThreads.nodes.flatMap((t) => t.comments.nodes),
+    ...(pr.comments?.nodes ?? []),
+    ...(pr.reviews?.nodes ?? []),
+    ...(pr.reviewThreads?.nodes ?? []).flatMap((t) => t.comments?.nodes ?? []),
   ].filter((n) => n.viewerDidAuthor)
-  const head = pr.commits.nodes[0]?.commit
+  const head = pr.commits?.nodes?.[0]?.commit
   const times = mine.map((n) => ms(n.createdAt))
   if (head?.author?.user?.login === me) times.push(ms(head.committedDate))
   return Math.max(0, ...times)
@@ -28,9 +28,9 @@ export function comments(d: Data, ctx: Ctx): TriggerOut {
   for (const pr of d.mine.nodes) {
     const mark = watermarkOf(pr, ctx.me)
     const candidates: Candidate[] = [
-      ...pr.comments.nodes,
-      ...pr.reviewThreads.nodes.flatMap((t) => t.comments.nodes),
-      ...pr.reviews.nodes.filter((r) => r.state === 'CHANGES_REQUESTED' || (r.state === 'COMMENTED' && r.bodyText !== '')),
+      ...(pr.comments?.nodes ?? []),
+      ...(pr.reviewThreads?.nodes ?? []).flatMap((t) => t.comments?.nodes ?? []),
+      ...(pr.reviews?.nodes ?? []).filter((r) => r.state === 'CHANGES_REQUESTED' || (r.state === 'COMMENTED' && r.bodyText !== '')),
     ]
     const counted = candidates
       .filter((c) => c.author?.login !== ctx.me && ms(c.createdAt) > mark && (ctx.cfg.includeBots || !isBot(c.author)))

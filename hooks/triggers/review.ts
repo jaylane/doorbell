@@ -10,7 +10,7 @@ export function reviews(d: Data, ctx: Ctx): TriggerOut {
   const events: Event[] = []
   for (const pr of d.rr.nodes) {
     const bot = isBot(pr.author)
-    const direct = pr.reviewRequests.nodes.some(
+    const direct = (pr.reviewRequests?.nodes ?? []).some(
       (n) => n.requestedReviewer?.__typename === 'User' && n.requestedReviewer.login === ctx.me,
     )
     const dim = !direct || pr.isDraft || bot

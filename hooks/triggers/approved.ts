@@ -11,7 +11,7 @@ export function approvals(d: Data, ctx: Ctx): TriggerOut {
   const items: Item[] = []
   const events: Event[] = []
   for (const pr of d.mine.nodes) {
-    for (const r of pr.latestOpinionatedReviews.nodes) {
+    for (const r of pr.latestOpinionatedReviews?.nodes ?? []) {
       if (r.state !== 'APPROVED' || isBot(r.author) || r.author?.login === ctx.me) continue
       const key = `a:${r.id}`
       const old = before.find((i) => i.key === key)

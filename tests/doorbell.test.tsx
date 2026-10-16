@@ -29,11 +29,12 @@ type World = {
   argv: string[][]
   notify: string[]
   osascript: string[][]
+  mvExit: number
 }
 
 // The engine beneath the mod: files, processes and notifications answered from memory.
 const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean } = {}): World => {
-  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [] }
+  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0 }
   for (const [p, text] of Object.entries(opts.files ?? {})) w.files.set(p, { text, mtimeMs: clock.now() })
   const need = (path: string) => {
     const f = w.files.get(path)
@@ -68,6 +69,7 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     }
     if (cmd === 'rmdir') return w.dirs.delete(last), result(0)
     if (cmd === 'mv') {
+      if (w.mvExit) return result(w.mvExit)
       w.files.set(rest[1]!, need(rest[0]!))
       w.files.delete(rest[0]!)
       return result(0)
@@ -263,4 +265,41 @@ test('band is hidden when there is nothing to show', async ($, on) => {
   await clock.advance(20_000)
   expect(graphqlCalls(w)).toBe(1)
   expect(await bandTexts($)).toEqual([])
+})
+
+test('a reduce exception is a query failure that backs off and leaves compares alone', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: { [`${DIR}/state.json`]: JSON.stringify(waitingPrev) } })
+  w.gh.push(ok({ viewer: null as never }), rr())
+  await $.session.start(START)
+  await clock.advance(20_000)
+  expect(graphqlCalls(w)).toBe(1)
+  expect(await bandTexts($)).toEqual(['⚠ GitHub error'])
+  expect(fileState(w)).toMatchObject({ error: 'query', lastAttemptAt: T0 + 20_000, failures: 1, pathlessQueryFailures: 0 })
+  expect(fileState(w).releases).toEqual(waitingPrev.releases)
+  await clock.advance(40_000)
+  expect(graphqlCalls(w)).toBe(1)
+  await clock.advance(20_000)
+  expect(graphqlCalls(w)).toBe(2)
+})
+
+test('a failed state write sends nothing and still waits out the poll interval', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock)
+  const second = rrPr({ id: 'PR2', number: 2, url: 'https://github.com/acme/app/pull/2' })
+  w.gh.push(rr(rrPr()), rr(rrPr(), second), rr(rrPr(), second))
+  await $.session.start(START)
+  await clock.advance(30_000)
+  expect(graphqlCalls(w)).toBe(1)
+  w.mvExit = 1
+  await clock.advance(50_000)
+  expect(graphqlCalls(w)).toBe(2)
+  expect(w.notify).toHaveLength(0)
+  await clock.advance(40_000)
+  expect(graphqlCalls(w)).toBe(2)
+  w.mvExit = 0
+  await clock.advance(20_000)
+  expect(graphqlCalls(w)).toBe(3)
+  expect(w.notify).toHaveLength(1)
+  expect(w.notify[0]).toContain('app#2')
 })

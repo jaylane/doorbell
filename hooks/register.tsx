@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Alias, Config, State } from '../types'
+import type { Alias, Built, Config, Note, State } from '../types'
 import { afterFailure } from './backoff'
 import { segments } from './band'
-import { findGh, runGh } from './gh'
+import { findGh, runGh, type GhOutcome } from './gh'
 import { ensureDir, release, tryLead } from './lease'
 import { send } from './notify'
 import { buildQuery } from './query'
@@ -40,24 +40,34 @@ const dropCompares = (s: State, paths: string[], aliases: Record<string, Alias>)
   return { ...giveUpCompares(s, aliases), pathlessQueryFailures: 0 }
 }
 
+const failed = (s: State, o: Exclude<GhOutcome, { kind: 'ok' }>, now: number, extra: Partial<State> = {}) => ({
+  state: { ...s, lastAttemptAt: now, ...afterFailure(s, o, now), ...extra },
+  notes: [] as Note[],
+})
+
+const outcome = (s: State, o: GhOutcome, built: Built, now: number): { state: State; notes: Note[] } => {
+  if (o.kind !== 'ok') return failed(s, o, now, o.kind === 'query' ? dropCompares(s, o.paths, built.aliases) : {})
+  try {
+    return reduce(s, o.data, o.failedPaths, built.aliases, now, cfg)
+  } catch (err) {
+    // Data the triggers cannot read backs off like a query error, but blames no compare.
+    return failed(s, { kind: 'query', message: String(err), paths: [] }, now)
+  }
+}
+
 async function poll($: EngineInterface, s: State, now: number) {
   inFlight = true
   try {
     const built = buildQuery(s, now)
-    const o = await runGh($, gh!, built)
-    const { state: next, notes } =
-      o.kind === 'ok'
-        ? reduce(s, o.data, o.failedPaths, built.aliases, now, cfg)
-        : {
-            state: {
-              ...s,
-              lastAttemptAt: now,
-              ...afterFailure(s, o, now),
-              ...(o.kind === 'query' ? dropCompares(s, o.paths, built.aliases) : {}),
-            },
-            notes: [],
-          }
-    await writeState($, dir, sessionId, next)
+    const { state: next, notes } = outcome(s, await runGh($, gh!, built), built, now)
+    try {
+      await writeState($, dir, sessionId, next)
+    } catch (err) {
+      // The old state stays so the next poll redoes the unsent notes; the attempt is kept so it waits its turn.
+      $.ui.log(`doorbell: ${String(err)}`)
+      await set($, { ...s, lastAttemptAt: next.lastAttemptAt, backoffUntil: next.backoffUntil })
+      return
+    }
     await set($, next)
     if (cfg.notify) await send($, notes)
   } finally {
