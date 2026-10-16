@@ -1,0 +1,5 @@
+{
+  "name": "doorbell",
+  "owner": { "name": "jaylane" },
+  "plugins": [{ "name": "doorbell", "source": "./" }]
+}

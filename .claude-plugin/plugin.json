@@ -1,0 +1,33 @@
+{
+  "name": "doorbell",
+  "version": "0.1.0",
+  "description": "Band above the prompt that rings when a GitHub pull request needs you: review requests, new comments, approvals and ships.",
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "userConfig": {
+    "pollSeconds": {
+      "type": "number",
+      "title": "Poll interval (seconds)",
+      "description": "Seconds between GitHub polls. Minimum 30.",
+      "default": 60
+    },
+    "fadeMinutes": {
+      "type": "number",
+      "title": "Fade time (minutes)",
+      "description": "How long approvals and ships stay on the band.",
+      "default": 5
+    },
+    "includeBots": {
+      "type": "boolean",
+      "title": "Include bots",
+      "description": "Show bot comments on the band.",
+      "default": false
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Notifications",
+      "description": "Send notifications when something new needs you.",
+      "default": true
+    }
+  }
+}
