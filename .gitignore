@@ -1,2 +1,5 @@
 .remember/
 .DS_Store
+*.log
+.mcpb-cache/
+.superpowers/
