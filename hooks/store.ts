@@ -13,6 +13,7 @@ export const EMPTY: State = {
   releases: {},
   latest: {},
   pendingShip: {},
+  pathlessQueryFailures: 0,
 }
 
 export const cacheDir = (home: string) => `${home}/.cache/doorbell`

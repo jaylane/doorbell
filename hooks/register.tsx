@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Config, State } from '../types'
+import type { Alias, Config, State } from '../types'
 import { afterFailure } from './backoff'
 import { segments } from './band'
 import { findGh, runGh } from './gh'
@@ -31,6 +31,15 @@ async function set($: EngineInterface, s: State) {
   await update($, state, () => s)
 }
 
+// A pathless error cannot say which compare broke the query, so they get one retry before all are given up.
+const dropCompares = (s: State, paths: string[], aliases: Record<string, Alias>): Partial<State> => {
+  const compares = Object.entries(aliases).filter(([, a]) => a.kind === 'compare')
+  if (paths.length) return giveUpCompares(s, Object.fromEntries(compares.filter(([id]) => paths.includes(id))))
+  if (!compares.length) return {}
+  if (s.pathlessQueryFailures === 0) return { pathlessQueryFailures: 1 }
+  return { ...giveUpCompares(s, aliases), pathlessQueryFailures: 0 }
+}
+
 async function poll($: EngineInterface, s: State, now: number) {
   inFlight = true
   try {
@@ -44,7 +53,7 @@ async function poll($: EngineInterface, s: State, now: number) {
               ...s,
               lastAttemptAt: now,
               ...afterFailure(s, o, now),
-              ...(o.kind === 'query' ? giveUpCompares(s, built.aliases) : {}),
+              ...(o.kind === 'query' ? dropCompares(s, o.paths, built.aliases) : {}),
             },
             notes: [],
           }

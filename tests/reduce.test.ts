@@ -17,6 +17,10 @@ const mineData = (...nodes: ReturnType<typeof minePr>[]) => data({ mine: { issue
 const run = (prev: ReturnType<typeof state>, d = data(), failed: string[] = [], aliases: Record<string, Alias> = {}) =>
   reduce(prev, d, failed, aliases, NOW, cfg)
 
+test('a successful poll resets the pathless query failure count', async () => {
+  expect(run(state({ pathlessQueryFailures: 1 })).state.pathlessQueryFailures).toBe(0)
+})
+
 test('bootstrap records everything seen and sends nothing', async () => {
   const out = run(state(), mineData(approved()))
   expect(out.notes).toEqual([])

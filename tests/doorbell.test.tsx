@@ -199,22 +199,45 @@ test('auth failure shows ⚠ run gh auth login and backs off 5 minutes', async (
   expect(graphqlCalls(w)).toBe(2)
 })
 
-test('query error drops compares', async ($, on) => {
+const waitingPrev = state({
+  pendingShip: { PR1: pending('acme/app'), PR2: pending('acme/lib', { number: 2 }) },
+  releases: { 'acme/app': 'v1', 'acme/lib': 'v1' },
+  latest: { 'acme/app': 'v2', 'acme/lib': 'v2' },
+  bootstrapped: true,
+})
+const pathless = ghOut(200, {}, { errors: [{ message: 'Something went wrong' }] })
+
+test('a pathless query error retries compares once, then gives them up', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
-  const prev = state({
-    pendingShip: { PR1: pending('acme/app') },
-    releases: { 'acme/app': 'v1' },
-    latest: { 'acme/app': 'v2' },
-    bootstrapped: true,
-  })
-  const w = world(on, clock, { files: { [`${DIR}/state.json`]: JSON.stringify(prev) } })
-  w.gh.push(ghOut(200, {}, { errors: [{ message: 'Something went wrong' }] }))
+  const w = world(on, clock, { files: { [`${DIR}/state.json`]: JSON.stringify(waitingPrev) } })
+  w.gh.push(pathless, pathless)
   await $.session.start(START)
   await clock.advance(20_000)
   expect(graphqlCalls(w)).toBe(1)
   expect(w.argv.find((a) => a.includes('graphql'))!.join(' ')).toContain('compare(')
-  expect(fileState(w).releases['acme/app']).toBe('v2')
+  expect(fileState(w).releases).toEqual(waitingPrev.releases)
+  expect(fileState(w).pathlessQueryFailures).toBe(1)
   expect(fileState(w).error).toBe('query')
+
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(2)
+  expect(w.argv.filter((a) => a.includes('graphql'))[1]!.join(' ')).toContain('compare(')
+  expect(fileState(w).releases).toEqual({ 'acme/app': 'v2', 'acme/lib': 'v2' })
+  expect(fileState(w).pendingShip.PR1!.compared).toBe('v2')
+  expect(fileState(w).pathlessQueryFailures).toBe(0)
+})
+
+test('a query error naming a compare alias gives up only that compare', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: { [`${DIR}/state.json`]: JSON.stringify(waitingPrev) } })
+  w.gh.push(ghOut(200, {}, { errors: [{ message: 'Could not resolve commit', path: ['c0', 'ref'] }] }))
+  await $.session.start(START)
+  await clock.advance(20_000)
+  expect(graphqlCalls(w)).toBe(1)
+  expect(fileState(w).releases).toEqual({ 'acme/app': 'v2', 'acme/lib': 'v1' })
+  expect(fileState(w).pendingShip.PR1!.compared).toBe('v2')
+  expect(fileState(w).pendingShip.PR2!.compared).toBeUndefined()
+  expect(fileState(w).pathlessQueryFailures).toBe(0)
 })
 
 test('session end releases the lease; /clear does not', async ($, on) => {

@@ -41,7 +41,7 @@ test('auth waits 5 min', async () => {
 })
 
 test('query doubles from 60s, capped at 15 min', async () => {
-  const q = { kind: 'query' as const, message: 'm' }
+  const q = { kind: 'query' as const, message: 'm', paths: [] }
   expect(afterFailure(state({ failures: 0 }), q, NOW)).toEqual({ backoffUntil: NOW + 60_000, failures: 1, error: 'query' })
   expect(afterFailure(state({ failures: 2 }), q, NOW).backoffUntil).toBe(NOW + 240_000)
   expect(afterFailure(state({ failures: 8 }), q, NOW).backoffUntil).toBe(NOW + 900_000)

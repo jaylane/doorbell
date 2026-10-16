@@ -79,7 +79,12 @@ test('empty stdout with exit 1 is offline', async () => {
 
 test('200 with errors and no data is query', async () => {
   const r = ok(ghOut(200, {}, { errors: [{ message: 'Field foo missing' }] }), 1)
-  expect(r).toEqual({ kind: 'query', message: 'Field foo missing' })
+  expect(r).toEqual({ kind: 'query', message: 'Field foo missing', paths: [] })
+})
+
+test('a query failure carries the distinct top-level paths its errors name', async () => {
+  const errors = [{ message: 'bad oid', path: ['c1', 'ref'] }, { message: 'again', path: ['c1'] }, { message: 'other', path: ['c0'] }]
+  expect(ok(ghOut(200, {}, { errors }), 1)).toEqual({ kind: 'query', message: 'bad oid', paths: ['c1', 'c0'] })
 })
 
 test('findGh falls back to homebrew when gh is not on PATH', async () => {

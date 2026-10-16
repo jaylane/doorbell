@@ -45,6 +45,7 @@ export function reduce(
     latest: sh.latest,
     pendingShip: sh.pendingShip,
     bootstrapped: true,
+    pathlessQueryFailures: 0,
     lastOkAt: now,
     lastAttemptAt: now,
     ...afterSuccess(failed.size > 0),

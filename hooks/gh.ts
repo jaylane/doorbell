@@ -6,7 +6,7 @@ export type GhOutcome =
   | { kind: 'rate'; retryAfterMs: number | null; resetAt: number | null }
   | { kind: 'auth' }
   | { kind: 'offline' }
-  | { kind: 'query'; message: string }
+  | { kind: 'query'; message: string; paths: string[] }
 
 type GhError = { message?: string; type?: string; path?: unknown[] }
 
@@ -26,6 +26,7 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
     body = JSON.parse(text) ?? {}
   } catch {}
   const errors = body.errors ?? []
+  const paths = [...new Set(errors.map((e) => e.path?.[0]).filter((p): p is string => typeof p === 'string'))]
 
   const exhausted = header('x-ratelimit-remaining') === '0'
   const rateText = [body.message, ...errors.map((e) => e.message)].some((m) => /rate limit/i.test(m ?? ''))
@@ -50,11 +51,8 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
   // Any other 403, such as an SSO or permission block, needs the user to act, like a 401.
   if (status === 403) return { kind: 'auth' }
   if (status >= 500) return { kind: 'offline' }
-  if (body.data) {
-    const failedPaths = [...new Set(errors.map((e) => e.path?.[0]).filter((p): p is string => typeof p === 'string'))]
-    return { kind: 'ok', data: body.data, failedPaths }
-  }
-  if (errors.length) return { kind: 'query', message: errors[0]?.message ?? 'GraphQL error' }
+  if (body.data) return { kind: 'ok', data: body.data, failedPaths: paths }
+  if (errors.length) return { kind: 'query', message: errors[0]?.message ?? 'GraphQL error', paths }
   return { kind: 'offline' }
 }
 

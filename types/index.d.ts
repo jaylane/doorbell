@@ -44,6 +44,8 @@ export type State = {
   latest: Record<string, string>
   /** prId -> waiting PR. */
   pendingShip: Record<string, Pending>
+  /** Consecutive whole-query failures whose errors named no alias, while compares were present. */
+  pathlessQueryFailures: number
 }
 export type Config = { pollSeconds: number; fadeMinutes: number; includeBots: boolean; notify: boolean }
 export type Note = { title: string; body: string }
