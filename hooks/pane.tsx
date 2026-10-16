@@ -42,7 +42,7 @@ const row = (s: Settings, repo: string): PaneRow => {
 }
 
 // Repos the user has an entry for, or that show on the band, sort ahead of the
-// fetched list so the 40-row cap never hides them.
+// fetched list so they are listed first under the 40-row cap.
 export function paneView(
   s: Settings,
   repos: string[] | null,
@@ -53,14 +53,9 @@ export function paneView(
   const needle = filter.toLowerCase()
   const candidates = [...new Set([...Object.keys(s.repos), ...items.map((i) => i.fullRepo), ...(repos ?? [])])]
     .filter((r) => r.toLowerCase().includes(needle))
-  const footer =
-    repos === null && !loadError
-      ? 'loading repos…'
-      : loadError
-        ? `couldn't load repos: ${loadError}`
-        : candidates.length > ROW_CAP
-          ? `showing ${ROW_CAP} of ${candidates.length} · type to filter`
-          : null
+  const failed = loadError ? `couldn't load repos: ${loadError}` : null
+  const capped = candidates.length > ROW_CAP ? `showing ${ROW_CAP} of ${candidates.length} · type to filter` : null
+  const footer = repos === null && !loadError ? 'loading repos…' : [failed, capped].filter(Boolean).join(' · ') || null
   return {
     allRepos: s.allRepos,
     defaults: byKind((k) => s.defaults.includes(k)),
@@ -81,8 +76,9 @@ export type PaneHandlers = {
 export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneView, p: PaneState, on: PaneHandlers) {
   const els = $.ui.resolve(e)
   const { Box, Button, Text } = els
+  const logged = (p: Promise<unknown>) => void p.catch((err) => $.ui.log(`doorbell: ${String(err)}`))
   const btn = (key: string, label: string, change: (s: Settings) => Settings) => (
-    <Button key={key} onPress={() => void on.press(change)}>
+    <Button key={key} onPress={() => logged(on.press(change))}>
       {label}
     </Button>
   )
@@ -100,8 +96,8 @@ export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneVi
           key="filter"
           label="filter:"
           value={p.filter}
-          onInput={(v: string) => void on.filter(v)}
-          onSubmit={(v: string) => void on.filter(v)}
+          onInput={(v: string) => logged(on.filter(v))}
+          onSubmit={(v: string) => logged(on.filter(v))}
         />
       )}
       <Box gap={1}>

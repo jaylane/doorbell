@@ -74,3 +74,9 @@ test('loading and error footers', async () => {
   expect(paneView(DEFAULT_SETTINGS, null, null, [], '').footer).toBe('loading repos…')
   expect(paneView(DEFAULT_SETTINGS, null, 'no gh', [], '').footer).toBe("couldn't load repos: no gh")
 })
+
+test('a load error keeps the cap footer when rows are capped', async () => {
+  const repos = many(45)
+  const s: Settings = { ...DEFAULT_SETTINGS, repos: Object.fromEntries(repos.map((r) => [r, { tracked: true, kinds: [] }])) }
+  expect(paneView(s, null, 'offline', [], '').footer).toBe("couldn't load repos: offline · showing 40 of 45 · type to filter")
+})

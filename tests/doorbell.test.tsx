@@ -30,13 +30,15 @@ type World = {
   notify: string[]
   osascript: string[][]
   mvExit: number
+  // While set, mv waits on it, so a test can hold a write between its tmp file and the rename.
+  mvHold: Promise<unknown> | null
   opened: string[]
   commands: string[]
 }
 
 // The engine beneath the mod: files, processes and notifications answered from memory.
 const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean } = {}): World => {
-  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, opened: [], commands: [] }
+  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [] }
   for (const [p, text] of Object.entries(opts.files ?? {})) w.files.set(p, { text, mtimeMs: clock.now() })
   const need = (path: string) => {
     const f = w.files.get(path)
@@ -59,7 +61,7 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     const mtimeMs = w.dirs.has(e.path) ? clock.now() : need(e.path).mtimeMs
     return { value: { kind: 'file' as const, size: 0, mtimeMs, isLink: false } }
   })
-  on('process.run', ($, e) => {
+  on('process.run', async ($, e) => {
     const argv = [...e.argv]
     w.argv.push(argv)
     const [cmd, ...rest] = argv
@@ -71,6 +73,7 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     }
     if (cmd === 'rmdir') return w.dirs.delete(last), result(0)
     if (cmd === 'mv') {
+      if (w.mvHold) await w.mvHold
       if (w.mvExit) return result(w.mvExit)
       w.files.set(rest[1]!, need(rest[0]!))
       w.files.delete(rest[0]!)
@@ -496,4 +499,43 @@ test('two presses before a redraw both land in the atom and the file', async ($,
   expect(texts).not.toContain('⚠ not saved')
   await ui.unmount()
   expect(await bandTexts($)).toEqual([])
+})
+
+test('a reload between two presses never drops the queued one', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const kept = { allRepos: true, defaults: ['review', 'comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: ['comment'] } } }
+  const w = world(on, clock, { files: followerFiles({ [`${DIR}/settings.json`]: JSON.stringify(kept) }) })
+  await $.session.start(START)
+  await clock.advance(5_000)
+  let releaseA = () => {}
+  let releaseB = () => {}
+  w.mvHold = new Promise<void>((r) => (releaseA = r))
+  const ui = await $.ui.mount(PANE)
+  const a = ui.press({ key: 'kind:acme/api:review' })
+  await clock.advance(0)
+  const b = ui.press({ key: 'kind:acme/web:review' })
+  await clock.advance(0)
+  w.mvHold = new Promise<void>((r) => (releaseB = r))
+  releaseA()
+  await clock.advance(5_000)
+  releaseB()
+  await Promise.all([a, b])
+  await clock.advance(10_000)
+  await ui.unmount()
+  expect(fileSettings(w).repos['acme/web']).toEqual({ tracked: true, kinds: ['comment', 'approved', 'shipped'] })
+  expect(await bandTexts($)).toEqual([])
+})
+
+test('a failed save reverts to the file at the next follower check', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  w.mvExit = 1
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'kind:acme/web:review' })
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).toContain('⚠ not saved')
+  await ui.unmount()
+  expect(await bandTexts($)).toEqual([])
+  await clock.advance(10_000)
+  expect(await bandTexts($)).toEqual(['👀 web#9'])
 })

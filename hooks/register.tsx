@@ -36,6 +36,8 @@ let lastMtime: number | null = null
 // undefined forces a read, since null already means no file.
 let lastSettingsMtime: number | null | undefined
 let saving: Promise<unknown> = Promise.resolve()
+// A reload while a press is unwritten would read the file from before it and overwrite the press in the atom.
+let pendingWrites = 0
 let opens = 0
 let cfg: Config = { pollSeconds: 60, fadeMinutes: 5, includeBots: false, notify: true }
 
@@ -88,23 +90,27 @@ async function poll($: EngineInterface, s: State, now: number) {
 }
 
 async function reloadSettings($: EngineInterface) {
+  if (pendingWrites) return
   const mtime = await settingsMtime($, dir)
   if (mtime === lastSettingsMtime) return
-  lastSettingsMtime = mtime
   const r = await readSettings($, dir)
+  // A press may land during the read; leaving the mtime unrecorded retries next tick.
+  if (pendingWrites) return
+  lastSettingsMtime = mtime
   await update($, settings, () => r.settings)
   await update($, pane, (p) => ({ ...p, isInvalid: r.isInvalid }))
 }
 
 // Presses share one tmp file per session, so writes queue; each writes the atom as it stands at its turn.
 async function press($: EngineInterface, change: (s: Settings) => Settings) {
+  pendingWrites++
   await update($, settings, change)
   const turn = saving.then(() => saveTurn($))
   saving = turn.catch(() => {})
   await turn
 }
 
-// The atom keeps a failed write's value, so the pane shows what was pressed until another file read replaces it.
+// The atom keeps a failed write's value until the next tick, which re-reads the file because the mtime is forgotten.
 async function saveTurn($: EngineInterface) {
   let save: PaneState['save'] = 'saved'
   try {
@@ -112,6 +118,9 @@ async function saveTurn($: EngineInterface) {
   } catch (err) {
     $.ui.log(`doorbell: ${String(err)}`)
     save = 'failed'
+    lastSettingsMtime = undefined
+  } finally {
+    pendingWrites--
   }
   await update($, pane, (p) => ({ ...p, save, isInvalid: save === 'failed' && p.isInvalid }))
 }
@@ -175,10 +184,11 @@ export const register: Register = (on, options) => {
     await ensureDir($, dir)
     const s = await readState($, dir)
     if (s) await set($, s)
-    await $.command.register({ name: 'doorbell', description: 'Choose which repos and alerts Doorbell watches' })
-    await reloadSettings($)
+    // gh is known before /doorbell can run, so the pane never reads it unset.
     gh = await findGh($)
     ghMissing = gh === null
+    await $.command.register({ name: 'doorbell', description: 'Choose which repos and alerts Doorbell watches' })
+    await reloadSettings($)
     $.clock.every(20_000, () => void heartbeat($).catch((err) => $.ui.log(`doorbell: ${String(err)}`)))
     $.clock.every(10_000, () => void followerRefresh($).catch((err) => $.ui.log(`doorbell: ${String(err)}`)))
     return next(e)

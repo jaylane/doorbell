@@ -120,6 +120,15 @@ test('parseSettings rejects unknown kinds, wrong types and non-objects', async (
   expect(parseSettings('{"allRepos":true,"defaults":[],"repos":[]}')).toBeNull()
 })
 
+test('parseSettings skips __proto__, constructor and prototype repo keys', async () => {
+  const entry = '{"tracked":true,"kinds":["review"]}'
+  const s = parseSettings(
+    `{"allRepos":true,"defaults":[],"repos":{"__proto__":${entry},"constructor":${entry},"prototype":${entry},"a/b":${entry}}}`,
+  )
+  expect(Object.keys(s!.repos)).toEqual(['a/b'])
+  expect(Object.getPrototypeOf(s!.repos)).toBe(Object.prototype)
+})
+
 test('readSettings: missing file gives defaults, garbage gives defaults with isInvalid', async () => {
   expect(await readSettings(fakeIo().io, D)).toEqual({ settings: DEFAULT_SETTINGS, isInvalid: false })
   const bad = fakeIo({ files: { [`${D}/settings.json`]: '{"allRepos":' } })

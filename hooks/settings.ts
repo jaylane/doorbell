@@ -104,6 +104,8 @@ export function parseSettings(text: string): Settings | null {
   if (!isObj(v) || typeof v.allRepos !== 'boolean' || !isKinds(v.defaults) || !isObj(v.repos)) return null
   const repos: Settings['repos'] = {}
   for (const [name, r] of Object.entries(v.repos)) {
+    // A hand-edited key like __proto__ would set the object's prototype instead of adding a repo.
+    if (name === '__proto__' || name === 'constructor' || name === 'prototype') continue
     if (!isObj(r) || typeof r.tracked !== 'boolean' || !isKinds(r.kinds)) return null
     repos[name] = { tracked: r.tracked, kinds: ordered(r.kinds) }
   }
