@@ -39,6 +39,14 @@ test('item segments link to the PR, and a shipped one to its release', async () 
   ])
 })
 
+test('a shipped link keeps slashes in monorepo tags and falls back to the PR for other URLs', async () => {
+  const href = (over: Partial<Item>) => segments(state({ items: [item({ kind: 'shipped', ...over })] }), NOW, false)[0]!.href
+  expect(href({ url: 'https://github.com/acme/app/pull/4', tag: '@scope/pkg@1.0 rc#2' })).toBe(
+    'https://github.com/acme/app/releases/tag/%40scope/pkg%401.0%20rc%232',
+  )
+  expect(href({ url: 'https://example.com/x', tag: 'v1' })).toBe('https://example.com/x')
+})
+
 test('status segments', async () => {
   expect(text(state(), true)).toEqual(['⚠ gh not found'])
   expect(text(state({ error: 'auth' }))).toEqual(['⚠ run gh auth login'])

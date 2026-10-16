@@ -15,7 +15,7 @@ const STATUS = {
 
 // A ship is about the release, so it links there; the PR URL already names owner and repo.
 const hrefOf = (i: Item): string =>
-  i.kind === 'shipped' && i.tag ? i.url.replace(/\/pull\/\d+$/, `/releases/tag/${encodeURIComponent(i.tag)}`) : i.url
+  i.kind === 'shipped' && i.tag ? i.url.replace(/\/pull\/\d+$/, `/releases/tag/${i.tag.split('/').map(encodeURIComponent).join('/')}`) : i.url
 
 const status = (s: State, now: number, ghMissing: boolean): Segment | null => {
   if (ghMissing) return { text: '⚠ gh not found', dim: false, warn: true }
