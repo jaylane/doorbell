@@ -147,6 +147,21 @@ test('leader polls, writes state and draws the band', async ($, on) => {
   expect(await bandTexts($)).toEqual(['👀 app#1'])
 })
 
+test('band items are links to their GitHub page', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock)
+  w.gh.push(rr(rrPr()))
+  await $.session.start(START)
+  await clock.advance(20_000)
+  const ui = await $.ui.mount(BAND)
+  const links = await ui.findAll({ type: 'Link' })
+  await ui.unmount()
+  // The kit's `text` for a Link leads with its href, so read the drawn label from the child Text.
+  expect(links.map((l) => [l.props.href, (l.children[0] as { text?: string; children?: unknown[] }).children])).toEqual([
+    ['https://github.com/acme/app/pull/1', ['👀 app#1']],
+  ])
+})
+
 test('first poll does not notify; a new review request on the next poll does', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   const w = world(on, clock)

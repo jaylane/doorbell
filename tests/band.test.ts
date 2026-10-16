@@ -12,8 +12,8 @@ const text = (s: State, ghMissing = false) => segments(s, NOW, ghMissing).map((x
 
 test('review item, dim for a dim item', async () => {
   expect(segments(state({ items: [item({}), item({ dim: true })] }), NOW, false)).toEqual([
-    { text: '👀 app#1', dim: false, warn: false },
-    { text: '👀 app#1', dim: true, warn: false },
+    { text: '👀 app#1', dim: false, warn: false, href: 'u' },
+    { text: '👀 app#1', dim: true, warn: false, href: 'u' },
   ])
 })
 
@@ -24,6 +24,27 @@ test('comment, approved and shipped items', async () => {
     item({ kind: 'shipped', number: 4, tag: 'v2' }),
   ]
   expect(text(state({ items }))).toEqual(['💬 app#2 ×3', '✅ app#3', '🚀 app#4 v2'])
+})
+
+test('item segments link to the PR, and a shipped one to its release', async () => {
+  const url = 'https://github.com/acme/app/pull/4'
+  const items = [
+    item({ kind: 'review', url }),
+    item({ kind: 'comment', url }),
+    item({ kind: 'approved', url }),
+    item({ kind: 'shipped', url, tag: 'pkg@1.0' }),
+  ]
+  expect(segments(state({ items, error: 'partial' }), NOW, false).map((x) => x.href)).toEqual([
+    url, url, url, 'https://github.com/acme/app/releases/tag/pkg%401.0', undefined,
+  ])
+})
+
+test('a shipped link keeps slashes in monorepo tags and falls back to the PR for other URLs', async () => {
+  const href = (over: Partial<Item>) => segments(state({ items: [item({ kind: 'shipped', ...over })] }), NOW, false)[0]!.href
+  expect(href({ url: 'https://github.com/acme/app/pull/4', tag: '@scope/pkg@1.0 rc#2' })).toBe(
+    'https://github.com/acme/app/releases/tag/%40scope/pkg%401.0%20rc%232',
+  )
+  expect(href({ url: 'https://example.com/x', tag: 'v1' })).toBe('https://example.com/x')
 })
 
 test('status segments', async () => {
