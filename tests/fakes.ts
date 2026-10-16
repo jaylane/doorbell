@@ -10,7 +10,7 @@ export const fakeIo = (
   for (const [p, text] of Object.entries(opts.files ?? {})) files.set(p, { text, mtimeMs: now.ms })
   const argv: string[][] = []
   const need = (path: string) => {
-    const f = files.get(path)
+    const f = files.get(path) ?? files.get(`${path}/`)
     if (!f) throw new Error(`ENOENT: ${path}`)
     return f
   }
@@ -26,10 +26,18 @@ export const fakeIo = (
     process: {
       run: async (args) => {
         argv.push([...args])
-        const [cmd, a = '', b = ''] = args
+        const [cmd] = args
+        const rest = args.slice(1)
+        const isParents = cmd === 'mkdir' && rest.includes('-p')
+        const pos: string[] = []
+        for (let i = 0; i < rest.length; i++) {
+          if (cmd === 'mkdir' && rest[i] === '-m') i++
+          else if (!(cmd === 'mkdir' && rest[i]!.startsWith('-'))) pos.push(rest[i]!)
+        }
+        const [a = '', b = ''] = pos
         const ok = { exitCode: 0, stdout: '', stderr: '' }
         if (cmd === 'mkdir') {
-          if (files.has(dir(a))) return { ...ok, exitCode: 1, stderr: 'File exists' }
+          if (files.has(dir(a))) return isParents ? ok : { ...ok, exitCode: 1, stderr: 'File exists' }
           files.set(dir(a), { text: '', mtimeMs: now.ms })
           return ok
         }
