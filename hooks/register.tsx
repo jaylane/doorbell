@@ -94,7 +94,7 @@ async function poll($: EngineInterface, s: State, now: number) {
     await set($, next)
     if (cfg.notify) await send($, notes)
     // A run waits for the session to go idle, which must not hold up the next poll.
-    if (runs.length) acting = acting.then(() => perform($, runs))
+    if (runs.length) acting = acting.then(() => perform($, runs)).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
   } finally {
     inFlight = false
   }

@@ -36,6 +36,8 @@ type World = {
   opened: string[]
   commands: string[]
   logs: string[]
+  // While set, every ui.invalidate throws.
+  invalidateThrows: boolean
   // What the mod asked the engine to run: `command:<name> <args>`, `prompt:<text>`, `spawn:<description>|<prompt>`.
   ran: string[]
   slashCommands: string[]
@@ -43,7 +45,7 @@ type World = {
 
 // The engine beneath the mod: files, processes and notifications answered from memory.
 const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean } = {}): World => {
-  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [], logs: [], ran: [], slashCommands: ['review'] }
+  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [], logs: [], invalidateThrows: false, ran: [], slashCommands: ['review'] }
   for (const [p, text] of Object.entries(opts.files ?? {})) w.files.set(p, { text, mtimeMs: clock.now() })
   const need = (path: string) => {
     const f = w.files.get(path)
@@ -122,7 +124,10 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     w.opened.push(e.id)
     return { value: { isPlaced: true as const } }
   })
-  on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.invalidate', () => {
+    if (w.invalidateThrows) throw new Error('invalidate failed')
+    return { value: undefined }
+  })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   // What the host draws when the band yields: an empty row.
@@ -654,4 +659,20 @@ test('a failed run shows ⚠ action failed', async ($, on) => {
   expect(w.ran).toEqual([])
   expect(w.logs).toContain('doorbell: command not found: /review')
   expect(await bandTexts($)).toEqual(['👀 app#1', '👀 app#2', '⚠ action failed'])
+})
+
+test('a run that rejects never blocks the next poll\'s run', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: { [`${DIR}/settings.json`]: actionSettings('session') } })
+  const pr3 = rrPr({ id: 'PR3', number: 3, url: 'https://github.com/acme/app/pull/3' })
+  w.gh.push(rr(rrPr()), rr(rrPr(), pr2), rr(rrPr(), pr2, pr3))
+  await $.session.start(START)
+  await clock.advance(20_000)
+  w.invalidateThrows = true
+  await clock.advance(60_000)
+  w.invalidateThrows = false
+  expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2'])
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(3)
+  expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2', 'command:review https://github.com/acme/app/pull/3'])
 })
