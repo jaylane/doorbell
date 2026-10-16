@@ -48,6 +48,12 @@ export type State = {
   pendingShip: Record<string, Pending>
   /** Consecutive whole-query failures whose errors named no alias, while compares were present. */
   pathlessQueryFailures: number
+  /** Firings waiting for a ▶ press. */
+  asks: Ask[]
+  /** Start times of automatic runs, per trigger, for the hourly cap. */
+  actionRuns: Record<Trigger, number[]>
+  /** Some trigger is at its hourly cap. */
+  actionPaused: boolean
 }
 export type Config = { pollSeconds: number; fadeMinutes: number; includeBots: boolean; notify: boolean }
 export type Note = { title: string; body: string }
@@ -113,6 +119,8 @@ declare module 'claude-code' {
 export type RepoSetting = { tracked: boolean; kinds: Kind[] }
 export type Trigger = 'review' | 'comment'
 export type ActionMode = 'off' | 'ask' | 'session' | 'background'
+export type Ask = { id: string; trigger: Trigger; prId: string; label: string; text: string }
+export type Run = Ask & { mode: 'session' | 'background' }
 export type Action = { mode: ActionMode; prompt: string }
 export type Settings = {
   allRepos: boolean

@@ -1,4 +1,5 @@
-import type { Alias, Config, Data, Note, Settings, State } from '../types'
+import type { Alias, Config, Data, Note, Run, Settings, State } from '../types'
+import { firings, plan } from './actions'
 import { afterSuccess } from './backoff'
 import { PAGE } from './query'
 import { approvals } from './triggers/approved'
@@ -25,7 +26,8 @@ export function reduce(
   now: number,
   cfg: Config,
   settings: Settings,
-): { state: State; notes: Note[] } {
+  handled: readonly string[] = [],
+): { state: State; notes: Note[]; runs: Run[] } {
   const failed = failedSet(d, failedPaths)
   const ctx: Ctx = { now, me: d.viewer.login, cfg, prev, failed }
   const rv = reviews(d, ctx)
@@ -39,9 +41,12 @@ export function reduce(
   for (const k of Object.keys(seen)) if (seen[k]! < now - 30 * DAY) delete seen[k]
 
   const fresh = events.filter((e) => e.notify && !(e.key in prev.seen) && allows(settings, e.fullRepo, e.kind))
+  const items = [...rv.items, ...cm.items, ...ap.items, ...sh.items]
+  const acted = plan(prev, prev.bootstrapped ? firings(fresh, settings) : [], settings, now, handled, items)
+  const asked = new Set(acted.asks.filter((a) => !prev.asks.some((p) => p.id === a.id)).map((a) => a.prId))
   const state: State = {
     ...prev,
-    items: [...rv.items, ...cm.items, ...ap.items, ...sh.items],
+    items,
     seen,
     releases: sh.releases,
     latest: sh.latest,
@@ -51,8 +56,11 @@ export function reduce(
     lastOkAt: now,
     lastAttemptAt: now,
     ...afterSuccess(failed.size > 0),
+    asks: acted.asks,
+    actionRuns: acted.actionRuns,
+    actionPaused: acted.actionPaused,
   }
-  return { state, notes: prev.bootstrapped ? notesOf(fresh) : [] }
+  return { state, notes: prev.bootstrapped ? notesOf(fresh, asked) : [], runs: acted.runs }
 }
 
 const noteOf = (group: Event[]): Note => {
@@ -75,12 +83,15 @@ const noteOf = (group: Event[]): Note => {
   }
 }
 
-export function notesOf(events: Event[]): Note[] {
+export function notesOf(events: Event[], asked: ReadonlySet<string> = new Set()): Note[] {
   const groups = new Map<string, Event[]>()
   for (const e of events) groups.set(e.prId, [...(groups.get(e.prId) ?? []), e])
   const all = [...groups.values()]
   if (all.length > 3) {
     return [{ title: `${all.length} PR updates`, body: all.map((g) => g[0]!.label).join(', ') }]
   }
-  return all.map(noteOf)
+  return all.map((g) => {
+    const n = noteOf(g)
+    return asked.has(g[0]!.prId) ? { ...n, body: `${n.body} · press ▶ to run` } : n
+  })
 }

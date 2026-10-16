@@ -19,7 +19,7 @@ import { giveUpCompares } from './triggers/shipped'
 // The shape tag versions the stored value: bump it whenever State gains a field,
 // or a reload reads the previous version's value and its missing fields land
 // undefined in the triggers.
-const state = atom({ plugin: 'doorbell', key: 'state' } as const, EMPTY, { shape: 'v3' })
+const state = atom({ plugin: 'doorbell', key: 'state' } as const, EMPTY, { shape: 'v4' })
 const settings = atom({ plugin: 'doorbell', key: 'settings' } as const, DEFAULT_SETTINGS, { shape: 'v1' })
 const CLOSED: PaneState = { repos: null, error: null, filter: '', save: null, isInvalid: false }
 const pane = atom({ plugin: 'doorbell', key: 'pane' } as const, CLOSED, { shape: 'v1' })
