@@ -126,3 +126,8 @@ test('every comment event carries url and number', async () => {
   const pr = minePr({ number: 7, url: 'https://github.com/acme/app/pull/7', comments: { nodes: [ic('IC1', 'alice', 10)] } })
   expect(comments(mine(pr), ctx()).events[0]).toMatchObject({ url: 'https://github.com/acme/app/pull/7', number: 7 })
 })
+
+test('a comment with a null bodyText yields an empty excerpt', async () => {
+  const pr = minePr({ comments: { nodes: [{ ...ic('IC1', 'alice', 10), bodyText: null as unknown as string }] } })
+  expect(comments(mine(pr), ctx()).events[0]?.excerpt).toBe('')
+})

@@ -56,10 +56,12 @@ export function plan(
       actionRuns[a.trigger].push(now)
     } else fresh.push(a)
   }
+  // The band shows one ask per PR and trigger, so a newer ask replaces the one it would hide.
+  const stale = (p: Ask) => fresh.some((f) => f.trigger === p.trigger && f.prId === p.prId)
   const live = (a: Ask) => !handled.includes(a.id) && items.some((i) => i.prId === a.prId && i.kind === a.trigger)
   return {
     runs,
-    asks: [...prev.asks, ...fresh].filter(live),
+    asks: [...prev.asks.filter((p) => !stale(p)), ...fresh].filter(live),
     actionRuns,
     actionPaused: TRIGGERS.some((t) => actionRuns[t].length >= CAP),
   }

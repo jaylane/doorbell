@@ -138,3 +138,22 @@ test('a state file from before actions reads with empty action fields', async ()
   expect(s!.actionRuns).toEqual({ review: [], comment: [] })
   expect(s!.bootstrapped).toBe(true)
 })
+
+test('a fresh comment ask replaces the older ask on the same PR', async () => {
+  const settings = withAction('comment', 'ask', '{comments}')
+  const first = run(live(), commentData(comment('a', 'alice', 'one')), settings)
+  expect(first.state.asks.map((a) => a.id)).toEqual(['act:c:PR1:c:a'])
+  const second = run(first.state, commentData(comment('a', 'alice', 'one'), comment('bb', 'bob', 'two')), settings, [], NOW + 1)
+  expect(second.state.asks).toHaveLength(1)
+  expect(second.state.asks[0]!.id.endsWith('c:bb')).toBe(true)
+})
+
+test('the same comments polled again add no run or ask', async () => {
+  const d = commentData(comment('a', 'alice', 'one'))
+  const ask = run(live(), d, withAction('comment', 'ask', 'x'))
+  expect(run(ask.state, d, withAction('comment', 'ask', 'x'), [], NOW + 1).state.asks).toEqual(ask.state.asks)
+  const bg = run(live(), d, withAction('comment', 'background', 'x'))
+  const again = run(bg.state, d, withAction('comment', 'background', 'x'), [], NOW + 1)
+  expect(again.runs).toEqual([])
+  expect(again.state.asks).toEqual([])
+})

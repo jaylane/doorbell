@@ -53,7 +53,7 @@ export function comments(d: Data, ctx: Ctx): TriggerOut {
         detail: '',
         url: pr.url,
         number: pr.number,
-        excerpt: excerptOf(c.bodyText),
+        excerpt: excerptOf(c.bodyText ?? ''),
       })
     }
     items.push({

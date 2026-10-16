@@ -88,7 +88,8 @@ export function notesOf(events: Event[], asked: ReadonlySet<string> = new Set())
   for (const e of events) groups.set(e.prId, [...(groups.get(e.prId) ?? []), e])
   const all = [...groups.values()]
   if (all.length > 3) {
-    return [{ title: `${all.length} PR updates`, body: all.map((g) => g[0]!.label).join(', ') }]
+    const tail = all.some((g) => asked.has(g[0]!.prId)) ? ' · press ▶ to run' : ''
+    return [{ title: `${all.length} PR updates`, body: `${all.map((g) => g[0]!.label).join(', ')}${tail}` }]
   }
   return all.map((g) => {
     const n = noteOf(g)
