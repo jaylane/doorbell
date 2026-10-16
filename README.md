@@ -22,7 +22,7 @@ Segments appear in this order.
 
 | Segment | Meaning |
 |---|---|
-| `👀 <repo>#<n>` | Review requested from you. Dim for team requests and drafts. |
+| `👀 <repo>#<n>` | Review requested from you. Dim for team requests, drafts and bot-opened PRs. |
 | `💬 <repo>#<n> ×<count>` | New comments on your PR. |
 | `✅ <repo>#<n>` | Your PR was approved. Fades after `fadeMinutes`. |
 | `🚀 <repo>#<n> <tag>` | Your merged PR is in a release. Fades after `fadeMinutes`. |
@@ -41,7 +41,7 @@ One status segment may follow, last.
 
 ## How it works
 
-One session at a time holds a lease and polls GitHub through your `gh` login, every `pollSeconds`, and at once after the machine wakes from sleep. Other sessions read the shared state file under `~/.cache/doorbell` (mode 0700, since it holds private PR titles), so each event gives one notification however many sessions are open. If the leader quits, another session takes over within 20 seconds. Backoff state lives in the same file, so a new leader inherits it.
+One session at a time holds a lease and polls GitHub through your `gh` login, every `pollSeconds`, and at once after the machine wakes from sleep. Other sessions read the shared state file under `~/.cache/doorbell` (mode 0700, since it holds private PR titles), so each event gives one notification however many sessions are open. If the leader exits cleanly, another session takes over within 20 seconds; if it crashed, within about 2 minutes, once its 90-second lease runs out. Backoff state lives in the same file, so a new leader inherits it.
 
 ## Settings
 
@@ -71,7 +71,7 @@ Behaviours nobody has observed against a live account yet.
 - [ ] A reply on a review thread clears 💬.
 - [ ] A dismissed approval clears ✅ early.
 - [ ] A team review request leaves the band once a teammate reviews. If it does not, that is a known limit.
-- [ ] Two sessions give one notification each, and one takes over within 20 s of the leader quitting.
+- [ ] Two sessions produce one notification per event in total, and one takes over within 20 s of the leader quitting cleanly.
 - [ ] A real lid-close of a minute or more polls on wake.
 
 ## License
