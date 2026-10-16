@@ -1,16 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Alias, Built, Config, Note, PaneState, Settings, State } from '../types'
+import type { Alias, Built, Config, Note, PaneState, Run, Settings, State } from '../types'
 import { afterFailure } from './backoff'
 import { segments } from './band'
 import { findGh, runGh, type GhOutcome } from './gh'
+import { addHandled, handledMtime, readHandled } from './handled'
 import { ensureDir, release, tryLead } from './lease'
 import { send } from './notify'
 import { drawPane, paneView } from './pane'
 import { buildQuery } from './query'
 import { reduce } from './reduce'
 import { listRepos } from './repos'
+import { checkAgents, runAction, runSession } from './run'
 import { shouldPoll } from './schedule'
 import { DEFAULT_SETTINGS, readSettings, settingsMtime, writeSettings } from './settings'
 import { cacheDir, EMPTY, readState, stateMtime, writeState } from './store'
@@ -39,6 +41,12 @@ let saving: Promise<unknown> = Promise.resolve()
 // A reload while a press is unwritten would read the file from before it and overwrite the press in the atom.
 let pendingWrites = 0
 let opens = 0
+let handled: string[] = []
+let lastHandledMtime: number | null | undefined
+let marking: Promise<unknown> = Promise.resolve()
+let acting: Promise<unknown> = Promise.resolve()
+let actionFailed = false
+const pressing = new Set<string>()
 let cfg: Config = { pollSeconds: 60, fadeMinutes: 5, includeBots: false, notify: true }
 
 async function set($: EngineInterface, s: State) {
@@ -57,12 +65,13 @@ const dropCompares = (s: State, paths: string[], aliases: Record<string, Alias>)
 const failed = (s: State, o: Exclude<GhOutcome, { kind: 'ok' }>, now: number, extra: Partial<State> = {}) => ({
   state: { ...s, lastAttemptAt: now, ...afterFailure(s, o, now), ...extra },
   notes: [] as Note[],
+  runs: [] as Run[],
 })
 
-const outcome = (s: State, o: GhOutcome, built: Built, now: number, prefs: Settings): { state: State; notes: Note[] } => {
+const outcome = (s: State, o: GhOutcome, built: Built, now: number, prefs: Settings): { state: State; notes: Note[]; runs: Run[] } => {
   if (o.kind !== 'ok') return failed(s, o, now, o.kind === 'query' ? dropCompares(s, o.paths, built.aliases) : {})
   try {
-    return reduce(s, o.data, o.failedPaths, built.aliases, now, cfg, prefs)
+    return reduce(s, o.data, o.failedPaths, built.aliases, now, cfg, prefs, handled)
   } catch (err) {
     // Data the triggers cannot read backs off like a query error, but blames no compare.
     return failed(s, { kind: 'query', message: String(err), paths: [] }, now)
@@ -73,7 +82,7 @@ async function poll($: EngineInterface, s: State, now: number) {
   inFlight = true
   try {
     const built = buildQuery(s, now)
-    const { state: next, notes } = outcome(s, await runGh($, gh!, built), built, now, await read($, settings))
+    const { state: next, notes, runs } = outcome(s, await runGh($, gh!, built), built, now, await read($, settings))
     try {
       await writeState($, dir, sessionId, next)
     } catch (err) {
@@ -84,8 +93,56 @@ async function poll($: EngineInterface, s: State, now: number) {
     }
     await set($, next)
     if (cfg.notify) await send($, notes)
+    // A run waits for the session to go idle, which must not hold up the next poll.
+    if (runs.length) acting = acting.then(() => perform($, runs))
   } finally {
     inFlight = false
+  }
+}
+
+const reason = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+async function perform($: EngineInterface, runs: Run[]) {
+  for (const run of runs) {
+    try {
+      await runAction($, run, cfg.notify)
+      actionFailed = false
+    } catch (err) {
+      $.ui.log(`doorbell: ${reason(err)}`)
+      actionFailed = true
+    }
+  }
+  $.ui.invalidate('ui.render')
+}
+
+async function reloadHandled($: EngineInterface) {
+  const mtime = await handledMtime($, dir)
+  if (mtime === lastHandledMtime) return
+  lastHandledMtime = mtime
+  handled = await readHandled($, dir)
+}
+
+// handled.json shares one tmp file per session, so its writes queue like settings writes.
+async function runAsk($: EngineInterface, id: string) {
+  const ask = (await read($, state)).asks.find((a) => a.id === id)
+  if (!ask || pressing.has(id)) return
+  pressing.add(id)
+  try {
+    try {
+      await runSession($, ask.text)
+    } catch (err) {
+      actionFailed = true
+      throw err
+    }
+    actionFailed = false
+    const turn = marking.then(() => addHandled($, dir, sessionId, id))
+    marking = turn.catch(() => {})
+    await turn
+    lastHandledMtime = undefined
+    await reloadHandled($)
+  } finally {
+    pressing.delete(id)
+    $.ui.invalidate('ui.render')
   }
 }
 
@@ -137,6 +194,9 @@ async function loadRepos($: EngineInterface) {
 async function heartbeat($: EngineInterface) {
   if (ghMissing) return
   await reloadSettings($)
+  await reloadHandled($)
+  // A failed agent list must not stop this beat from renewing the lease.
+  await checkAgents($, cfg.notify).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
   const now = await $.clock.now()
   const won = await tryLead($, dir, sessionId, now)
   if (won) {
@@ -154,6 +214,7 @@ async function heartbeat($: EngineInterface) {
 
 async function followerRefresh($: EngineInterface) {
   await reloadSettings($)
+  await reloadHandled($)
   const mtime = await stateMtime($, dir)
   if (mtime !== lastMtime) {
     lastMtime = mtime
@@ -179,6 +240,8 @@ export const register: Register = (on, options) => {
     lastBeatAt = 0
     lastMtime = null
     lastSettingsMtime = undefined
+    lastHandledMtime = undefined
+    actionFailed = false
     sessionId = await $.session.id()
     dir = cacheDir((await $.env.get('HOME')) ?? (await $.session.cwd()))
     await ensureDir($, dir)
@@ -189,6 +252,7 @@ export const register: Register = (on, options) => {
     ghMissing = gh === null
     await $.command.register({ name: 'doorbell', description: 'Choose which repos and alerts Doorbell watches' })
     await reloadSettings($)
+    await reloadHandled($)
     $.clock.every(20_000, () => void heartbeat($).catch((err) => $.ui.log(`doorbell: ${String(err)}`)))
     $.clock.every(10_000, () => void followerRefresh($).catch((err) => $.ui.log(`doorbell: ${String(err)}`)))
     return next(e)
@@ -218,18 +282,24 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-    const segs = segments(await read($, state), await $.clock.now(), ghMissing, await read($, settings))
+    const s = await read($, state)
+    // An ask this session marked handled hides at once, before the leader drops it.
+    const shown = { ...s, asks: s.asks.filter((a) => !handled.includes(a.id)) }
+    const segs = segments(shown, await $.clock.now(), ghMissing, await read($, settings), actionFailed)
     if (!segs.length) return next(e)
-    const { Box, Link, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     return (
       <Box flexWrap="wrap" gap={2}>
-        {segs.map((seg, i) => {
+        {segs.flatMap((seg, i) => {
           const text = (
             <Text key={String(i)} dimColor={seg.dim} {...(seg.warn ? { color: 'yellow' } : {})}>
               {seg.text}
             </Text>
           )
-          return seg.href ? <Link key={String(i)} href={seg.href}>{text}</Link> : text
+          const el = seg.href ? <Link key={String(i)} href={seg.href}>{text}</Link> : text
+          const id = seg.ask
+          if (!id) return [el]
+          return [el, <Button key={`ask:${id}`} onPress={() => void runAsk($, id).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))}>▶</Button>]
         })}
       </Box>
     )
