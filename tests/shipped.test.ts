@@ -17,6 +17,20 @@ const waiting = state({
 const run = (st: 'BEHIND' | 'IDENTICAL' | 'AHEAD' | 'DIVERGED' | null, over: Partial<Ctx> = {}) =>
   shipped(data({ merged: { issueCount: 1, nodes: [mergedPr({ id: 'PR9', number: 9 })] }, c0: compareNode(st) }), { c0: cmp }, ctx({ prev: waiting, ...over }))
 
+test('a merged PR keeps the tag it was last compared against', async () => {
+  const prev = state({ pendingShip: { PR9: pending(REPO, { number: 9, compared: 'v1' }) } })
+  const out = shipped(data({ merged: { issueCount: 1, nodes: [mergedPr({ id: 'PR9', number: 9 })] } }), {}, ctx({ prev }))
+  expect(out.pendingShip.PR9!.compared).toBe('v1')
+})
+
+test('a late joiner compared against an already-compared tag ships with it', async () => {
+  const prev = state({ ...waiting, releases: { [REPO]: 'v2' }, bootstrapped: true })
+  const out = run('BEHIND', { prev })
+  expect(out.events[0]).toMatchObject({ key: 's:PR9', notify: true, detail: 'v2' })
+  expect(out.items[0]).toMatchObject({ key: 's:PR9', tag: 'v2' })
+  expect(out.pendingShip.PR9).toBeUndefined()
+})
+
 test('merged PRs enter pendingShip', async () => {
   const out = shipped(data({ merged: { issueCount: 1, nodes: [mergedPr({ id: 'PR9', number: 9 })] } }), {}, ctx())
   expect(out.pendingShip).toEqual({ PR9: pending(REPO, { number: 9 }) })
@@ -49,7 +63,7 @@ test('BEHIND marks shipped and notifies', async () => {
 test('AHEAD and DIVERGED leave the PR waiting and record the tag', async () => {
   for (const s of ['AHEAD', 'DIVERGED'] as const) {
     const out = run(s)
-    expect(out.pendingShip.PR9).toBeDefined()
+    expect(out.pendingShip.PR9!.compared).toBe('v2')
     expect(out.releases[REPO]).toBe('v2')
     expect(out.events).toEqual([])
   }
@@ -57,13 +71,14 @@ test('AHEAD and DIVERGED leave the PR waiting and record the tag', async () => {
 
 test('deleted tag (ref null) records the tag and leaves the PR waiting', async () => {
   const out = run(null)
-  expect(out.pendingShip.PR9).toBeDefined()
+  expect(out.pendingShip.PR9!.compared).toBe('v2')
   expect(out.releases[REPO]).toBe('v2')
 })
 
 test('errored compare keeps the PR waiting and does not record the tag', async () => {
   for (const out of [run('BEHIND', { failed: new Set(['c0']) }), shipped(data({ merged: { issueCount: 1, nodes: [mergedPr({ id: 'PR9', number: 9 })] }, c0: { ref: { compare: null } } }), { c0: cmp }, ctx({ prev: waiting }))]) {
     expect(out.pendingShip.PR9).toBeDefined()
+    expect(out.pendingShip.PR9!.compared).toBeUndefined()
     expect(out.releases[REPO]).toBe('v1')
     expect(out.events).toEqual([])
   }
@@ -78,7 +93,9 @@ test('first sight of a repo ships silently', async () => {
 })
 
 test('giveUpCompares records every compared repo\'s tag', async () => {
-  expect(giveUpCompares(waiting, aliases).releases).toEqual({ [REPO]: 'v2' })
+  const out = giveUpCompares(waiting, aliases)
+  expect(out.releases).toEqual({ [REPO]: 'v2' })
+  expect(out.pendingShip.PR9!.compared).toBe('v2')
 })
 
 test('shipped item fades after fadeMinutes', async () => {

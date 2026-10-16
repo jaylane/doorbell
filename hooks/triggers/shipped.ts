@@ -14,12 +14,10 @@ export function shipped(d: Data, aliases: Record<string, Alias>, ctx: Ctx): Out 
   if (!ctx.failed.has('merged')) {
     for (const pr of d.merged.nodes) {
       if (!pr.mergeCommit || `s:${pr.id}` in prev.seen) continue
-      waiting[pr.id] = { repo: pr.repository.nameWithOwner, number: pr.number, title: pr.title, url: pr.url, mergeOid: pr.mergeCommit.oid }
+      waiting[pr.id] = { ...prev.pendingShip[pr.id], repo: pr.repository.nameWithOwner, number: pr.number, title: pr.title, url: pr.url, mergeOid: pr.mergeCommit.oid }
     }
   }
 
-  const retry = new Set<string>()
-  const compared = new Set<string>()
   const contained: [string, string][] = []
   for (const [id, a] of Object.entries(aliases)) {
     const v = ctx.failed.has(id) ? null : (d[id] as Probe | undefined) ?? null
@@ -28,13 +26,11 @@ export function shipped(d: Data, aliases: Record<string, Alias>, ctx: Ctx): Out 
       if (tag) latest[a.repo] = tag
       continue
     }
-    compared.add(a.repo)
-    if (!v) retry.add(a.repo)
-    else if (v.ref && !v.ref.compare) retry.add(a.repo)
-    else if (v.ref && ['BEHIND', 'IDENTICAL'].includes(v.ref.compare!.status)) contained.push([a.prId, a.tag])
-  }
-  for (const [id, a] of Object.entries(aliases)) {
-    if (a.kind === 'compare' && compared.has(a.repo) && !retry.has(a.repo)) releases[a.repo] = a.tag
+    // An errored compare is retried, so it leaves the PR's compared tag as it was.
+    if (!v || (v.ref && !v.ref.compare)) continue
+    releases[a.repo] = a.tag
+    if (waiting[a.prId]) waiting[a.prId] = { ...waiting[a.prId]!, compared: a.tag }
+    if (v.ref && ['BEHIND', 'IDENTICAL'].includes(v.ref.compare!.status)) contained.push([a.prId, a.tag])
   }
 
   const events: Event[] = []
@@ -57,8 +53,13 @@ export function shipped(d: Data, aliases: Record<string, Alias>, ctx: Ctx): Out 
   return { items: [...kept, ...fresh], events, pendingShip: waiting, releases, latest }
 }
 
-export const giveUpCompares = (prev: State, aliases: Record<string, Alias>): Pick<State, 'releases'> => {
+export const giveUpCompares = (prev: State, aliases: Record<string, Alias>): Pick<State, 'releases' | 'pendingShip'> => {
   const releases = { ...prev.releases }
-  for (const a of Object.values(aliases)) if (a.kind === 'compare') releases[a.repo] = a.tag
-  return { releases }
+  const pendingShip = { ...prev.pendingShip }
+  for (const a of Object.values(aliases)) {
+    if (a.kind !== 'compare') continue
+    releases[a.repo] = a.tag
+    if (pendingShip[a.prId]) pendingShip[a.prId] = { ...pendingShip[a.prId]!, compared: a.tag }
+  }
+  return { releases, pendingShip }
 }

@@ -18,7 +18,7 @@ test('adds one release alias per repo with waiting PRs', async () => {
 })
 test('adds a compare per waiting PR only where the latest tag is not compared yet', async () => {
   const s = state({
-    pendingShip: { P1: pending('acme/app'), P2: pending('acme/lib') },
+    pendingShip: { P1: pending('acme/app', { compared: 'v1' }), P2: pending('acme/lib', { compared: 'v9' }) },
     latest: { 'acme/app': 'v2', 'acme/lib': 'v9' }, releases: { 'acme/app': 'v1', 'acme/lib': 'v9' },
   })
   const compares = Object.values(buildQuery(s, 0).aliases).filter(a => a.kind === 'compare')
@@ -30,4 +30,12 @@ test('quotes owner, name, tag and oid as GraphQL string literals', async () => {
 })
 test('rr pages 100 so broad-team requests do not overflow', async () => {
   expect(buildQuery(state(), 0).query).toContain('rr: search(query:$rr,type:ISSUE,first:100)')
+})
+test('a PR joining after its repo\'s tag was compared is still compared against it', async () => {
+  const s = state({
+    pendingShip: { P1: pending('acme/app', { compared: 'v2' }), P2: pending('acme/app', { number: 2 }) },
+    latest: { 'acme/app': 'v2' }, releases: { 'acme/app': 'v2' },
+  })
+  const compares = Object.values(buildQuery(s, 0).aliases).filter(a => a.kind === 'compare')
+  expect(compares).toEqual([{ kind: 'compare', repo: 'acme/app', tag: 'v2', prId: 'P2' }])
 })

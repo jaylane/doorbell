@@ -50,7 +50,7 @@ export const buildQuery = (state: State, now: number): Built => {
   let c = 0
   for (const [prId, p] of pending) {
     const tag = state.latest[p.repo]
-    if (!tag || state.releases[p.repo] === tag) continue
+    if (!tag || p.compared === tag) continue
     add(
       { kind: 'compare', repo: p.repo, tag, prId },
       `c${c++}`,
