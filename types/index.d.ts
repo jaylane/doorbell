@@ -111,7 +111,15 @@ declare module 'claude-code' {
 }
 
 export type RepoSetting = { tracked: boolean; kinds: Kind[] }
-export type Settings = { allRepos: boolean; defaults: Kind[]; repos: Record<string, RepoSetting> }
+export type Trigger = 'review' | 'comment'
+export type ActionMode = 'off' | 'ask' | 'session' | 'background'
+export type Action = { mode: ActionMode; prompt: string }
+export type Settings = {
+  allRepos: boolean
+  defaults: Kind[]
+  repos: Record<string, RepoSetting>
+  actions: Record<Trigger, Action>
+}
 // Inside `declare module 'claude-code'`, a bare `Settings` names the engine's own type.
 export type DoorbellSettings = Settings
 export type PaneState = {

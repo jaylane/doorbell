@@ -29,6 +29,7 @@ test('rows reflect effective kinds and tracking; untracked rows have all kinds f
       'acme/a': { tracked: true, kinds: ['review', 'shipped'] },
       'acme/b': { tracked: false, kinds: [] },
     },
+    actions: DEFAULT_SETTINGS.actions,
   }
   const v = paneView(s, [], null, [], '')
   expect(v.allRepos).toBe(false)

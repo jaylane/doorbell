@@ -1,9 +1,31 @@
-import type { Kind, RepoSetting, Settings } from '../types'
+import type { Action, ActionMode, Kind, RepoSetting, Settings, Trigger } from '../types'
 import type { Io } from './io'
 
 export const KINDS: readonly Kind[] = ['review', 'comment', 'approved', 'shipped']
 
-export const DEFAULT_SETTINGS: Settings = { allRepos: true, defaults: [...KINDS], repos: {} }
+export const DEFAULT_ACTIONS: Record<Trigger, Action> = {
+  review: { mode: 'off', prompt: '' },
+  comment: { mode: 'off', prompt: '' },
+}
+
+export const DEFAULT_SETTINGS: Settings = { allRepos: true, defaults: [...KINDS], repos: {}, actions: DEFAULT_ACTIONS }
+
+const MODES: readonly ActionMode[] = ['off', 'ask', 'session', 'background']
+const TRIGGERS: readonly Trigger[] = ['review', 'comment']
+
+// A mode with nothing to run would fire an empty prompt, so it counts as off.
+export function effectiveMode(a: Action): ActionMode {
+  return a.prompt.trim() === '' ? 'off' : a.mode
+}
+
+const withAction = (s: Settings, t: Trigger, change: Partial<Action>): Settings => ({
+  ...s,
+  actions: { ...s.actions, [t]: { ...s.actions[t], ...change } },
+})
+
+export const setActionMode = (s: Settings, t: Trigger, mode: ActionMode): Settings => withAction(s, t, { mode })
+
+export const setActionPrompt = (s: Settings, t: Trigger, prompt: string): Settings => withAction(s, t, { prompt })
 
 export type Group = 'on' | 'off' | 'mixed'
 
@@ -109,7 +131,18 @@ export function parseSettings(text: string): Settings | null {
     if (!isObj(r) || typeof r.tracked !== 'boolean' || !isKinds(r.kinds)) return null
     repos[name] = { tracked: r.tracked, kinds: ordered(r.kinds) }
   }
-  return { allRepos: v.allRepos, defaults: ordered(v.defaults), repos }
+  let actions = DEFAULT_ACTIONS
+  if (v.actions !== undefined) {
+    if (!isObj(v.actions)) return null
+    const parsed = {} as Record<Trigger, Action>
+    for (const t of TRIGGERS) {
+      const a = v.actions[t]
+      if (!isObj(a) || !MODES.includes(a.mode) || typeof a.prompt !== 'string') return null
+      parsed[t] = { mode: a.mode, prompt: a.prompt }
+    }
+    actions = parsed
+  }
+  return { allRepos: v.allRepos, defaults: ordered(v.defaults), repos, actions }
 }
 
 export async function readSettings(io: Io, dir: string): Promise<{ settings: Settings; isInvalid: boolean }> {

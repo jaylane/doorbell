@@ -83,6 +83,7 @@ test('an item whose repo is untracked or whose kind is off is hidden; status seg
     allRepos: false,
     defaults: [],
     repos: { 'acme/app': { tracked: true, kinds: ['review' as const] } },
+    actions: DEFAULT_SETTINGS.actions,
   }
   expect(segments(state({ items, error: 'rate' }), NOW, false, settings).map((x) => x.text)).toEqual([
     '👀 app#1',

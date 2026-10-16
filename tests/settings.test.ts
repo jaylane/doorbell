@@ -1,14 +1,18 @@
 import { expect, test } from 'claude-code/testing'
 import { fakeIo } from './fakes'
 import {
+  DEFAULT_ACTIONS,
   DEFAULT_SETTINGS,
   KINDS,
   allows,
   columnState,
   effective,
+  effectiveMode,
   isTracked,
   parseSettings,
   readSettings,
+  setActionMode,
+  setActionPrompt,
   toggleAllRepos,
   toggleColumn,
   toggleDefault,
@@ -148,4 +152,33 @@ test('writeSettings writes tmp then mv, and rejects when mv fails', async () => 
   let failed = false
   await writeSettings(io, D, 'S1', DEFAULT_SETTINGS).catch(() => (failed = true))
   expect(failed).toBe(true)
+})
+
+test('missing actions parse as off', async () => {
+  const s = parseSettings('{"allRepos":true,"defaults":[],"repos":{}}')
+  expect(s!.actions).toEqual(DEFAULT_ACTIONS)
+  expect(DEFAULT_ACTIONS.review).toEqual({ mode: 'off', prompt: '' })
+})
+
+test('malformed actions reject the file', async () => {
+  const f = (a: string) => parseSettings(`{"allRepos":true,"defaults":[],"repos":{},"actions":${a}}`)
+  expect(f('{"review":{"mode":"bogus","prompt":""},"comment":{"mode":"off","prompt":""}}')).toBeNull()
+  expect(f('{"review":{"mode":"off","prompt":1},"comment":{"mode":"off","prompt":""}}')).toBeNull()
+  expect(f('{"review":{"mode":"off","prompt":""}}')).toBeNull()
+  expect(f('[]')).toBeNull()
+  const ok = f('{"review":{"mode":"ask","prompt":"x"},"comment":{"mode":"off","prompt":""}}')
+  expect(ok!.actions.review).toEqual({ mode: 'ask', prompt: 'x' })
+})
+
+test('blank prompt makes effectiveMode off', async () => {
+  expect(effectiveMode({ mode: 'session', prompt: '  \n' })).toBe('off')
+  expect(effectiveMode({ mode: 'session', prompt: 'go' })).toBe('session')
+})
+
+test('setActionMode and setActionPrompt change one trigger', async () => {
+  const a = setActionMode(DEFAULT_SETTINGS, 'comment', 'ask')
+  expect(a.actions.comment.mode).toBe('ask')
+  expect(a.actions.review).toEqual(DEFAULT_ACTIONS.review)
+  expect(setActionPrompt(a, 'comment', 'hi').actions.comment).toEqual({ mode: 'ask', prompt: 'hi' })
+  expect(DEFAULT_SETTINGS.actions.comment.mode).toBe('off')
 })

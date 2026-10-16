@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { DEFAULT_ACTIONS } from '../hooks/settings'
 import type { Item, State } from '../types'
 import { data, ghOut, minePr, pending, rrPr, state } from './fixtures'
 
@@ -437,7 +438,7 @@ test('the all-repos and column boxes toggle every repo at once', async ($, on) =
   await $.session.start(START)
   const ui = await $.ui.mount(PANE)
   await ui.press({ key: 'col:review' })
-  expect(fileSettings(w)).toEqual({ allRepos: true, defaults: ['comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: [] } } })
+  expect(fileSettings(w)).toEqual({ allRepos: true, defaults: ['comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: [] } }, actions: DEFAULT_ACTIONS })
   await ui.press({ key: 'all-repos' })
   expect(fileSettings(w).allRepos).toBe(false)
   await ui.press({ key: 'col:all' })
