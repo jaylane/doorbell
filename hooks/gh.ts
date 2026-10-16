@@ -27,12 +27,14 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
   } catch {}
   const errors = body.errors ?? []
 
+  const exhausted = header('x-ratelimit-remaining') === '0'
+  const rateText = [body.message, ...errors.map((e) => e.message)].some((m) => /rate limit/i.test(m ?? ''))
   if (status === 401) return { kind: 'auth' }
   if (
-    status === 403 ||
     status === 429 ||
-    (header('x-ratelimit-remaining') === '0' && !body.data) ||
-    (!body.data && [body.message, ...errors.map((e) => e.message)].some((m) => /rate limit/i.test(m ?? ''))) ||
+    (status === 403 && (header('retry-after') !== undefined || exhausted || rateText)) ||
+    (exhausted && !body.data) ||
+    (!body.data && rateText) ||
     errors.some((e) => e.type === 'RATE_LIMITED')
   ) {
     // Retry-After may be an HTTP-date; a NaN here would stall polling forever.
@@ -45,6 +47,8 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
       resetAt: seconds(reset),
     }
   }
+  // Any other 403, such as an SSO or permission block, needs the user to act, like a 401.
+  if (status === 403) return { kind: 'auth' }
   if (status >= 500) return { kind: 'offline' }
   if (body.data) {
     const failedPaths = [...new Set(errors.map((e) => e.path?.[0]).filter((p): p is string => typeof p === 'string'))]

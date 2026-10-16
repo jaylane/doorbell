@@ -45,6 +45,20 @@ test('403 with Retry-After: 120 is rate', async () => {
   })
 })
 
+test('403 without rate-limit signals is auth, as for an SSO block', async () => {
+  const sso = { message: 'Resource protected by organization SAML enforcement. You must grant your Personal Access token access to this organization.' }
+  expect(ok(ghOut(403, {}, sso), 1)).toEqual({ kind: 'auth' })
+})
+
+test('403 with x-ratelimit-remaining 0 or rate-limit text is rate', async () => {
+  expect(ok(ghOut(403, { 'X-RateLimit-Remaining': '0' }, { message: 'x' }), 1).kind).toBe('rate')
+  expect(ok(ghOut(403, {}, { message: 'You have exceeded a secondary rate limit' }), 1).kind).toBe('rate')
+})
+
+test('429 is rate', async () => {
+  expect(ok(ghOut(429, {}, { message: 'x' }), 1).kind).toBe('rate')
+})
+
 test('200 with x-ratelimit-remaining 0, x-ratelimit-reset 1800000000 and no data is rate', async () => {
   const r = ok(ghOut(200, { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1800000000' }, {}))
   expect(r).toEqual({ kind: 'rate', retryAfterMs: null, resetAt: 1800000000000 })
