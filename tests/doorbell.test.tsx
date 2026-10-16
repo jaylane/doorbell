@@ -3,7 +3,7 @@ import type { Engine, MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import type { Item, State } from '../types'
-import { data, ghOut, pending, rrPr, state } from './fixtures'
+import { data, ghOut, minePr, pending, rrPr, state } from './fixtures'
 
 const T0 = 1_700_000_000_000
 const DIR = '/home/t/.cache/doorbell'
@@ -302,4 +302,25 @@ test('a failed state write sends nothing and still waits out the poll interval',
   expect(graphqlCalls(w)).toBe(3)
   expect(w.notify).toHaveLength(1)
   expect(w.notify[0]).toContain('app#2')
+})
+
+test('taking over the lease reloads the file, so the new leader does not re-notify', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const stale = state({ bootstrapped: true, lastOkAt: T0 })
+  const w = world(on, clock, {
+    files: {
+      [`${DIR}/state.json`]: JSON.stringify(stale),
+      [`${DIR}/lease.json`]: JSON.stringify({ sessionId: 'S2', expiresAt: T0 + 15_000 }),
+    },
+  })
+  const bob = { login: 'bob', __typename: 'User' }
+  const approvedPr = minePr({ reviewDecision: 'APPROVED', latestOpinionatedReviews: { nodes: [{ id: 'R1', state: 'APPROVED', author: bob }] } })
+  w.gh.push(ok({ mine: { issueCount: 1, nodes: [approvedPr] } }))
+  await $.session.start(START)
+  await clock.advance(12_000)
+  // The old leader's last write, with an mtime the follower refresh already holds, so only the takeover can pick it up.
+  w.files.set(`${DIR}/state.json`, { text: JSON.stringify({ ...stale, seen: { 'a:R1': T0 } }), mtimeMs: T0 })
+  await clock.advance(8_000)
+  expect(graphqlCalls(w)).toBe(1)
+  expect(w.notify).toHaveLength(0)
 })

@@ -23,6 +23,7 @@ let dir = ''
 let gh: string | null = null
 let ghMissing = false
 let inFlight = false
+let leading = false
 let lastBeatAt = 0
 let lastMtime: number | null = null
 let cfg: Config = { pollSeconds: 60, fadeMinutes: 5, includeBots: false, notify: true }
@@ -79,10 +80,17 @@ async function poll($: EngineInterface, s: State, now: number) {
 async function heartbeat($: EngineInterface) {
   if (ghMissing) return
   const now = await $.clock.now()
-  if (await tryLead($, dir, sessionId, now)) {
+  const won = await tryLead($, dir, sessionId, now)
+  if (won) {
+    // The old leader may have written since this session last refreshed; polling from older seen keys would re-notify.
+    if (!leading) {
+      const file = await readState($, dir)
+      if (file) await set($, file)
+    }
     const s = await read($, state)
     if (!inFlight && shouldPoll(s, lastBeatAt, now, cfg)) await poll($, s, now)
   }
+  leading = won
   lastBeatAt = now
 }
 
@@ -108,6 +116,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     if (!e.isInteractive) return next(e)
     inFlight = false
+    leading = false
     lastBeatAt = 0
     lastMtime = null
     sessionId = await $.session.id()
