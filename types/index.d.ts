@@ -109,3 +109,6 @@ declare module 'claude-code' {
     doorbell: { state: Shaped<State> }
   }
 }
+
+export type RepoSetting = { tracked: boolean; kinds: Kind[] }
+export type Settings = { allRepos: boolean; defaults: Kind[]; repos: Record<string, RepoSetting> }
