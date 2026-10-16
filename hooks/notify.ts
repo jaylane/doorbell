@@ -7,7 +7,7 @@ const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 const needsFallback = (r: { isSent: true; channel: string } | { isSent: false; reason: string }) =>
   r.isSent ? r.channel === 'terminal_bell' : r.reason === 'no-channel' || r.reason === 'no-surface'
 
-export const send = async (io: Io, notes: Note[]): Promise<void> => {
+export async function send(io: Io, notes: Note[]): Promise<void> {
   for (const { title, body } of notes) {
     try {
       const r = await io.ui.notify(`${title}: ${body}`, { title: 'Doorbell' })

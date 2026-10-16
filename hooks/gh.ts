@@ -55,7 +55,7 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
 }
 
 // Claude Code's PATH can miss Homebrew, so the usual install locations are probed explicitly.
-export const findGh = async (io: Io): Promise<string | null> => {
+export async function findGh(io: Io): Promise<string | null> {
   for (const gh of ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh']) {
     try {
       if ((await io.process.run([gh, '--version'], { timeoutMs: 5000 })).exitCode === 0) return gh
@@ -64,7 +64,7 @@ export const findGh = async (io: Io): Promise<string | null> => {
   return null
 }
 
-export const runGh = async (io: Io, gh: string, built: Built): Promise<GhOutcome> => {
+export async function runGh(io: Io, gh: string, built: Built): Promise<GhOutcome> {
   const fields = Object.entries({ query: built.query, ...built.variables }).flatMap(([k, v]) => ['-f', `${k}=${v}`])
   try {
     return parseGh(await io.process.run([gh, 'api', 'graphql', '-i', ...fields], { timeoutMs: 30_000 }))

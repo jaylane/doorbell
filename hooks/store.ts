@@ -17,7 +17,7 @@ export const EMPTY: State = {
 
 export const cacheDir = (home: string) => `${home}/.cache/doorbell`
 
-export const readState = async (io: Io, dir: string): Promise<State | null> => {
+export async function readState(io: Io, dir: string): Promise<State | null> {
   try {
     return JSON.parse(await io.fs.read(`${dir}/state.json`)) as State
   } catch {
@@ -26,14 +26,14 @@ export const readState = async (io: Io, dir: string): Promise<State | null> => {
 }
 
 // A per-session tmp name keeps two writers from clobbering each other's tmp file.
-export const writeState = async (io: Io, dir: string, sessionId: string, s: State): Promise<void> => {
+export async function writeState(io: Io, dir: string, sessionId: string, s: State): Promise<void> {
   const tmp = `${dir}/state.json.${sessionId}.tmp`
   await io.fs.write(tmp, JSON.stringify(s))
   const r = await io.process.run(['mv', tmp, `${dir}/state.json`])
   if (r.exitCode !== 0) throw new Error(`mv failed: ${r.stderr}`)
 }
 
-export const stateMtime = async (io: Io, dir: string): Promise<number | null> => {
+export async function stateMtime(io: Io, dir: string): Promise<number | null> {
   try {
     return (await io.fs.stat(`${dir}/state.json`)).mtimeMs
   } catch {

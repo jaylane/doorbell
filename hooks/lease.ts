@@ -5,7 +5,7 @@ const STALE_LOCK_MS = 5_000
 
 type Lease = { sessionId: string; expiresAt: number }
 
-const run = async (io: Io, argv: string[]) => {
+async function run(io: Io, argv: string[]) {
   try {
     return (await io.process.run(argv)).exitCode === 0
   } catch {
@@ -13,11 +13,11 @@ const run = async (io: Io, argv: string[]) => {
   }
 }
 
-export const ensureDir = async (io: Io, dir: string): Promise<void> => {
+export async function ensureDir(io: Io, dir: string): Promise<void> {
   await run(io, ['mkdir', '-p', '-m', '700', dir])
 }
 
-const readLease = async (io: Io, dir: string): Promise<Lease | null> => {
+async function readLease(io: Io, dir: string): Promise<Lease | null> {
   try {
     return JSON.parse(await io.fs.read(`${dir}/lease.json`)) as Lease
   } catch {
@@ -26,7 +26,7 @@ const readLease = async (io: Io, dir: string): Promise<Lease | null> => {
 }
 
 // A crashed holder leaves the lock behind, so one older than 5 s is removed and retried once.
-const withLock = async <T>(io: Io, dir: string, now: number, fn: () => Promise<T>): Promise<T | null> => {
+async function withLock<T>(io: Io, dir: string, now: number, fn: () => Promise<T>): Promise<T | null> {
   const lock = `${dir}/lease.lock`
   if (!(await run(io, ['mkdir', lock]))) {
     const age = await io.fs.stat(lock).then((s) => s.mtimeMs, () => now)
@@ -41,15 +41,17 @@ const withLock = async <T>(io: Io, dir: string, now: number, fn: () => Promise<T
   }
 }
 
-export const tryLead = async (io: Io, dir: string, sessionId: string, now: number): Promise<boolean> =>
-  (await withLock(io, dir, now, async () => {
+export async function tryLead(io: Io, dir: string, sessionId: string, now: number): Promise<boolean> {
+  const led = await withLock(io, dir, now, async () => {
     const lease = await readLease(io, dir)
     if (lease && lease.sessionId !== sessionId && lease.expiresAt > now) return false
     await io.fs.write(`${dir}/lease.json`, JSON.stringify({ sessionId, expiresAt: now + TTL_MS }))
     return true
-  })) ?? false
+  })
+  return led ?? false
+}
 
-export const release = async (io: Io, dir: string, sessionId: string, now: number): Promise<void> => {
+export async function release(io: Io, dir: string, sessionId: string, now: number): Promise<void> {
   await withLock(io, dir, now, async () => {
     if ((await readLease(io, dir))?.sessionId !== sessionId) return
     await io.fs.write(`${dir}/lease.json`, JSON.stringify({ sessionId, expiresAt: 0 }))
