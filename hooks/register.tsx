@@ -35,6 +35,8 @@ let lastBeatAt = 0
 let lastMtime: number | null = null
 // undefined forces a read, since null already means no file.
 let lastSettingsMtime: number | null | undefined
+let saving: Promise<unknown> = Promise.resolve()
+let opens = 0
 let cfg: Config = { pollSeconds: 60, fadeMinutes: 5, includeBots: false, notify: true }
 
 async function set($: EngineInterface, s: State) {
@@ -94,13 +96,19 @@ async function reloadSettings($: EngineInterface) {
   await update($, pane, (p) => ({ ...p, isInvalid: r.isInvalid }))
 }
 
-// The atom keeps a failed write's value, so the pane shows what was pressed until another file read replaces it.
+// Presses share one tmp file per session, so writes queue; each writes the atom as it stands at its turn.
 async function press($: EngineInterface, change: (s: Settings) => Settings) {
-  const next = change(await read($, settings))
-  await update($, settings, () => next)
+  await update($, settings, change)
+  const turn = saving.then(() => saveTurn($))
+  saving = turn.catch(() => {})
+  await turn
+}
+
+// The atom keeps a failed write's value, so the pane shows what was pressed until another file read replaces it.
+async function saveTurn($: EngineInterface) {
   let save: PaneState['save'] = 'saved'
   try {
-    await writeSettings($, dir, sessionId, next)
+    await writeSettings($, dir, sessionId, await read($, settings))
   } catch (err) {
     $.ui.log(`doorbell: ${String(err)}`)
     save = 'failed'
@@ -108,8 +116,11 @@ async function press($: EngineInterface, change: (s: Settings) => Settings) {
   await update($, pane, (p) => ({ ...p, save, isInvalid: save === 'failed' && p.isInvalid }))
 }
 
+// A slow list from an earlier open must not overwrite the one a reopen started.
 async function loadRepos($: EngineInterface) {
+  const open = ++opens
   const { repos, error } = await listRepos($, gh!)
+  if (open !== opens) return
   await update($, pane, (p) => ({ ...p, repos, error }))
 }
 
@@ -164,7 +175,7 @@ export const register: Register = (on, options) => {
     await ensureDir($, dir)
     const s = await readState($, dir)
     if (s) await set($, s)
-    await $.command.register({ name: 'doorbell', description: 'Choose which repos and events Doorbell shows' })
+    await $.command.register({ name: 'doorbell', description: 'Choose which repos and alerts Doorbell watches' })
     await reloadSettings($)
     gh = await findGh($)
     ghMissing = gh === null
