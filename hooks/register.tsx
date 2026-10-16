@@ -37,7 +37,7 @@ const dropCompares = (s: State, paths: string[], aliases: Record<string, Alias>)
   const compares = Object.entries(aliases).filter(([, a]) => a.kind === 'compare')
   if (paths.length) return giveUpCompares(s, Object.fromEntries(compares.filter(([id]) => paths.includes(id))))
   if (!compares.length) return {}
-  if (s.pathlessQueryFailures === 0) return { pathlessQueryFailures: 1 }
+  if (!s.pathlessQueryFailures) return { pathlessQueryFailures: 1 }
   return { ...giveUpCompares(s, aliases), pathlessQueryFailures: 0 }
 }
 
