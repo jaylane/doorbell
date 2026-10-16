@@ -1,9 +1,10 @@
-import type { Alias, Config, Data, Note, State } from '../types'
+import type { Alias, Config, Data, Note, Settings, State } from '../types'
 import { afterSuccess } from './backoff'
 import { PAGE } from './query'
 import { approvals } from './triggers/approved'
 import { comments } from './triggers/comments'
 import { reviews } from './triggers/review'
+import { allows } from './settings'
 import { shipped } from './triggers/shipped'
 import type { Ctx, Event } from './triggers/types'
 
@@ -23,6 +24,7 @@ export function reduce(
   aliases: Record<string, Alias>,
   now: number,
   cfg: Config,
+  settings: Settings,
 ): { state: State; notes: Note[] } {
   const failed = failedSet(d, failedPaths)
   const ctx: Ctx = { now, me: d.viewer.login, cfg, prev, failed }
@@ -36,7 +38,7 @@ export function reduce(
   for (const e of events) seen[e.key] = now
   for (const k of Object.keys(seen)) if (seen[k]! < now - 30 * DAY) delete seen[k]
 
-  const fresh = events.filter((e) => e.notify && !(e.key in prev.seen))
+  const fresh = events.filter((e) => e.notify && !(e.key in prev.seen) && allows(settings, e.fullRepo, e.kind))
   const state: State = {
     ...prev,
     items: [...rv.items, ...cm.items, ...ap.items, ...sh.items],

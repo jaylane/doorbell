@@ -10,6 +10,7 @@ import { send } from './notify'
 import { buildQuery } from './query'
 import { reduce } from './reduce'
 import { shouldPoll } from './schedule'
+import { DEFAULT_SETTINGS } from './settings'
 import { cacheDir, EMPTY, readState, stateMtime, writeState } from './store'
 import { giveUpCompares } from './triggers/shipped'
 
@@ -49,7 +50,7 @@ const failed = (s: State, o: Exclude<GhOutcome, { kind: 'ok' }>, now: number, ex
 const outcome = (s: State, o: GhOutcome, built: Built, now: number): { state: State; notes: Note[] } => {
   if (o.kind !== 'ok') return failed(s, o, now, o.kind === 'query' ? dropCompares(s, o.paths, built.aliases) : {})
   try {
-    return reduce(s, o.data, o.failedPaths, built.aliases, now, cfg)
+    return reduce(s, o.data, o.failedPaths, built.aliases, now, cfg, DEFAULT_SETTINGS)
   } catch (err) {
     // Data the triggers cannot read backs off like a query error, but blames no compare.
     return failed(s, { kind: 'query', message: String(err), paths: [] }, now)
@@ -139,7 +140,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-    const segs = segments(await read($, state), await $.clock.now(), ghMissing)
+    const segs = segments(await read($, state), await $.clock.now(), ghMissing, DEFAULT_SETTINGS)
     if (!segs.length) return next(e)
     const { Box, Link, Text } = $.ui.resolve(e)
     return (

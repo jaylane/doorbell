@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { compareNode, data, mergedPr, minePr, pending, releaseNode, rrPr, state } from './fixtures'
+import { DEFAULT_SETTINGS } from '../hooks/settings'
 import { failedSet, notesOf, reduce } from '../hooks/reduce'
 import type { Event } from '../hooks/triggers/types'
 import type { Alias } from '../types'
@@ -15,7 +16,7 @@ const approved = (id = 'R1') =>
   minePr({ reviewDecision: 'APPROVED', latestOpinionatedReviews: { nodes: [{ id, state: 'APPROVED', author: user('bob') }] } })
 const mineData = (...nodes: ReturnType<typeof minePr>[]) => data({ mine: { issueCount: nodes.length, nodes } })
 const run = (prev: ReturnType<typeof state>, d = data(), failed: string[] = [], aliases: Record<string, Alias> = {}) =>
-  reduce(prev, d, failed, aliases, NOW, cfg)
+  reduce(prev, d, failed, aliases, NOW, cfg, DEFAULT_SETTINGS)
 
 test('a successful poll resets the pathless query failure count', async () => {
   expect(run(state({ pathlessQueryFailures: 1 })).state.pathlessQueryFailures).toBe(0)
@@ -137,4 +138,21 @@ test('null connections read as empty instead of throwing', async () => {
   const d = { ...data({ mine: { issueCount: 1, nodes: [mine] }, rr: { issueCount: 1, nodes: [req] } }), r0: { releases: null } }
   const out = run(state({ bootstrapped: true }), d as ReturnType<typeof data>, [], aliases)
   expect(out.state.items.map((i) => i.kind)).toEqual(['review'])
+})
+
+const kindsOff = { ...DEFAULT_SETTINGS, defaults: DEFAULT_SETTINGS.defaults.filter((k) => k !== 'approved') }
+
+test('events of an off kind record seen but send no note', async () => {
+  const out = reduce(state({ bootstrapped: true }), mineData(approved()), [], {}, NOW, cfg, kindsOff)
+  expect(out.notes).toEqual([])
+  expect(out.state.seen['a:R1']).toBe(NOW)
+})
+
+test('turning a kind back on shows its items with no note', async () => {
+  const d = mineData(approved())
+  const off = reduce(state({ bootstrapped: true }), d, [], {}, NOW, cfg, kindsOff)
+  const on = reduce(off.state, d, [], {}, NOW, cfg, DEFAULT_SETTINGS)
+  expect(off.state.items).toHaveLength(1)
+  expect(on.state.items).toHaveLength(1)
+  expect(on.notes).toEqual([])
 })
