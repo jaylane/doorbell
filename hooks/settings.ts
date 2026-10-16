@@ -3,10 +3,11 @@ import type { Io } from './io'
 
 export const KINDS: readonly Kind[] = ['review', 'comment', 'approved', 'shipped']
 
-export const DEFAULT_ACTIONS: Record<Trigger, Action> = {
-  review: { mode: 'off', prompt: '' },
-  comment: { mode: 'off', prompt: '' },
-}
+// Frozen because DEFAULT_SETTINGS and every default-parsed file share it.
+export const DEFAULT_ACTIONS: Record<Trigger, Action> = Object.freeze({
+  review: Object.freeze({ mode: 'off', prompt: '' }),
+  comment: Object.freeze({ mode: 'off', prompt: '' }),
+})
 
 export const DEFAULT_SETTINGS: Settings = { allRepos: true, defaults: [...KINDS], repos: {}, actions: DEFAULT_ACTIONS }
 

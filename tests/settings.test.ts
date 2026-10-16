@@ -182,3 +182,8 @@ test('setActionMode and setActionPrompt change one trigger', async () => {
   expect(setActionPrompt(a, 'comment', 'hi').actions.comment).toEqual({ mode: 'ask', prompt: 'hi' })
   expect(DEFAULT_SETTINGS.actions.comment.mode).toBe('off')
 })
+
+test('DEFAULT_ACTIONS is frozen', async () => {
+  expect(Object.isFrozen(DEFAULT_ACTIONS)).toBe(true)
+  expect(Object.isFrozen(DEFAULT_ACTIONS.review)).toBe(true)
+})
