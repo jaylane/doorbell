@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="assets/doorbell.png" alt="Doorbell" width="200">
+</p>
+
 <h1 align="center">Doorbell</h1>
+
+<p align="center"><a href="https://github.com/jaylane/doorbell/actions/workflows/ci.yml"><img src="https://github.com/jaylane/doorbell/actions/workflows/ci.yml/badge.svg" alt="CI"></a></p>
 
 A Claude Code mod that rings when a GitHub pull request needs you. It draws one wrapping row above the prompt and sends a notification when something new appears. The band is hidden when there is nothing to show and no error, and it yields to a survey.
 
@@ -83,6 +89,18 @@ tsc -p .
 ```
 
 `.claude-plugin/types/` is gitignored. Copy it from the SDK (as in Pilot Light) before `tsc` runs.
+
+CI runs validate and test on every push to `master` and on every pull request. `tsc` stays a local check, because its type files exist only where a Claude Code session has loaded the mod.
+
+### Releasing
+
+Bump `version` in `.claude-plugin/plugin.json`, commit it to `master`, then tag that commit:
+
+```
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The release workflow re-runs the checks, confirms the tag matches the manifest version, and publishes a GitHub release with generated notes. Installed copies pick it up with `claude plugin update doorbell`.
 
 ## Manual checks
 
