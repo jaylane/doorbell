@@ -3,7 +3,7 @@ import { allows } from './settings'
 
 export type Segment = { text: string; dim: boolean; warn: boolean; href?: string }
 
-const ICON: Record<Kind, string> = { review: '👀', comment: '💬', approved: '✅', shipped: '🚀' }
+export const ICON: Record<Kind, string> = { review: '👀', comment: '💬', approved: '✅', shipped: '🚀' }
 const STALE_MS = 180_000
 
 const STATUS = {
