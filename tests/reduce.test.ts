@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { compareNode, data, mergedPr, minePr, pending, releaseNode, rrPr, state } from './fixtures'
-import { notesOf, reduce } from '../hooks/reduce'
+import { failedSet, notesOf, reduce } from '../hooks/reduce'
 import type { Event } from '../hooks/triggers/types'
 import type { Alias } from '../types'
 
@@ -114,4 +114,13 @@ test('a long-lived approval does not re-notify after 30 days', async () => {
 test('unobserved keys older than 30 days are pruned', async () => {
   const out = run(state({ bootstrapped: true, seen: { gone: NOW - 31 * DAY, recent: NOW - DAY } }))
   expect(out.state.seen).toEqual({ recent: NOW - DAY })
+})
+
+test('failedSet flags searches whose issueCount exceeds the page size', async () => {
+  const d = data({
+    mine: { issueCount: 30, nodes: [] },
+    rr: { issueCount: 31, nodes: [] },
+    merged: { issueCount: 51, nodes: [] },
+  })
+  expect([...failedSet(d, ['c0'])].sort()).toEqual(['c0', 'merged', 'rr'])
 })

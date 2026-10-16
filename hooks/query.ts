@@ -20,8 +20,10 @@ const PR_FIELDS = {
  }`,
 }
 
-const search = (name: keyof typeof PR_FIELDS, first: number) =>
-  ` ${name}: search(query:$${name},type:ISSUE,first:${first}){ issueCount nodes{ ${PR_FIELDS[name]}}}`
+export const PAGE = { mine: 30, rr: 30, merged: 50 } as const
+
+const search = (name: keyof typeof PR_FIELDS) =>
+  ` ${name}: search(query:$${name},type:ISSUE,first:${PAGE[name as keyof typeof PAGE]}){ issueCount nodes{ ${PR_FIELDS[name]}}}`
 
 const repoOf = (nameWithOwner: string) => {
   const [owner, name] = nameWithOwner.split('/')
@@ -61,9 +63,9 @@ export const buildQuery = (state: State, now: number): Built => {
     'query($mine:String!,$rr:String!,$merged:String!){',
     ' rateLimit{cost remaining}',
     ' viewer{login}',
-    search('mine', 30),
-    search('rr', 30),
-    search('merged', 50),
+    search('mine'),
+    search('rr'),
+    search('merged'),
     ...extra,
     '}',
   ].join('\n')

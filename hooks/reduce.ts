@@ -1,5 +1,6 @@
 import type { Alias, Config, Data, Note, State } from '../types'
 import { afterSuccess } from './backoff'
+import { PAGE } from './query'
 import { approvals } from './triggers/approved'
 import { comments } from './triggers/comments'
 import { reviews } from './triggers/review'
@@ -7,8 +8,6 @@ import { shipped } from './triggers/shipped'
 import type { Ctx, Event } from './triggers/types'
 
 const DAY = 86_400_000
-// Must match the `first` sizes in query.ts.
-const PAGE: Record<'mine' | 'rr' | 'merged', number> = { mine: 30, rr: 30, merged: 50 }
 const ORDER = ['review', 'approved', 'comment', 'shipped']
 
 export function failedSet(d: Data, failedPaths: string[]): Set<string> {
