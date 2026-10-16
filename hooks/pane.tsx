@@ -1,9 +1,10 @@
 import type { EngineInterface, ResolveInput } from 'claude-code'
 
-import type { Item, Kind, PaneState, Settings } from '../types'
+import type { ActionMode, Item, Kind, PaneState, Settings, Trigger } from '../types'
 import { ICON } from './band'
 import {
   KINDS,
+  TRIGGERS,
   columnState,
   effective,
   groupState,
@@ -16,6 +17,7 @@ import {
   toggleTracked,
 } from './settings'
 import type { Group } from './settings'
+import { PLACEHOLDERS, unknownPlaceholders } from './template'
 
 export type PaneRow = { repo: string; tracked: boolean; all: Group; kinds: Record<Kind, boolean> }
 export type PaneView = {
@@ -23,6 +25,7 @@ export type PaneView = {
   defaults: Record<Kind, boolean>
   column: { all: Group; kinds: Record<Kind, Group> }
   rows: PaneRow[]
+  actions: Record<Trigger, { mode: ActionMode; prompt: string; problem: string | null }>
   footer: string | null
 }
 
@@ -49,6 +52,7 @@ export function paneView(
   loadError: string | null,
   items: Item[],
   filter: string,
+  drafts: PaneState['drafts'] = {},
 ): PaneView {
   const needle = filter.toLowerCase()
   const candidates = [...new Set([...Object.keys(s.repos), ...items.map((i) => i.fullRepo), ...(repos ?? [])])]
@@ -61,6 +65,17 @@ export function paneView(
     defaults: byKind((k) => s.defaults.includes(k)),
     column: { all: columnState(s, 'all'), kinds: byKind((k) => columnState(s, k)) },
     rows: candidates.slice(0, ROW_CAP).map((r) => row(s, r)),
+    actions: Object.fromEntries(
+      TRIGGERS.map((t) => {
+        const { mode } = s.actions[t]
+        const prompt = drafts[t] ?? s.actions[t].prompt
+        const unknown = unknownPlaceholders(prompt)
+        const problem = unknown.length
+          ? `unknown: ${unknown.map((n) => `{${n}}`).join(', ')}`
+          : mode !== 'off' && prompt.trim() === '' ? 'off: prompt is empty' : null
+        return [t, { mode, prompt, problem }]
+      }),
+    ) as PaneView['actions'],
     footer,
   }
 }
@@ -71,7 +86,18 @@ const box = (on: boolean) => BOX[on ? 'on' : 'off']
 export type PaneHandlers = {
   press: (change: (s: Settings) => Settings) => Promise<unknown>
   filter: (text: string) => Promise<unknown>
+  mode: (t: Trigger, mode: ActionMode) => Promise<unknown>
+  prompt: (t: Trigger, text: string) => Promise<unknown>
+  draft: (t: Trigger, text: string) => Promise<unknown>
 }
+
+const TRIGGER_LABEL: Record<Trigger, string> = { review: '👀 review requested', comment: '💬 new comment' }
+const MODE_OPTIONS = [
+  { value: 'off', label: 'off' },
+  { value: 'ask', label: 'ask' },
+  { value: 'session', label: 'auto · session' },
+  { value: 'background', label: 'auto · background' },
+]
 
 export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneView, p: PaneState, on: PaneHandlers) {
   const els = $.ui.resolve(e)
@@ -91,6 +117,28 @@ export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneVi
         {p.save && <Text dimColor>{p.save === 'saved' ? 'saved' : '⚠ not saved'}</Text>}
       </Box>
       {p.isInvalid && <Text dimColor>settings file unreadable, using defaults</Text>}
+      {'Select' in els &&
+        'Input' in els &&
+        TRIGGERS.map((t) => (
+          <Box key={`action:${t}`} flexDirection="column">
+            <Box gap={1}>
+              <Text>{TRIGGER_LABEL[t]}</Text>
+              <els.Select key={`mode:${t}`} options={MODE_OPTIONS} value={view.actions[t].mode} onSelect={(v: string) => logged(on.mode(t, v as ActionMode))} />
+            </Box>
+            <els.Input
+              key={`prompt:${t}`}
+              value={view.actions[t].prompt}
+              rows={2}
+              submitLabel="save"
+              onInput={(v: string) => logged(on.draft(t, v))}
+              onSubmit={(v: string) => logged(on.prompt(t, v))}
+            />
+            {view.actions[t].problem && <Text color="yellow">{view.actions[t].problem}</Text>}
+          </Box>
+        ))}
+      {'Select' in els && 'Input' in els && (
+        <Text dimColor>{`placeholders: ${PLACEHOLDERS.map((n) => `{${n}}`).join(' ')} · max 3 automatic runs per hour`}</Text>
+      )}
       {'Input' in els && (
         <els.Input
           key="filter"

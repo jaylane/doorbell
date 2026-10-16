@@ -48,6 +48,12 @@ export type State = {
   pendingShip: Record<string, Pending>
   /** Consecutive whole-query failures whose errors named no alias, while compares were present. */
   pathlessQueryFailures: number
+  /** Firings waiting for a ▶ press. */
+  asks: Ask[]
+  /** Start times of automatic runs, per trigger, for the hourly cap. */
+  actionRuns: Record<Trigger, number[]>
+  /** Some trigger is at its hourly cap. */
+  actionPaused: boolean
 }
 export type Config = { pollSeconds: number; fadeMinutes: number; includeBots: boolean; notify: boolean }
 export type Note = { title: string; body: string }
@@ -59,7 +65,7 @@ export type Built = { query: string; variables: Record<string, string>; aliases:
 export type Author = { login: string; __typename: string } | null
 export type Opinion = { id: string; state: string; author: Author }
 export type Review = Opinion & { bodyText: string; viewerDidAuthor: boolean; createdAt: string }
-export type Comment = { id: string; viewerDidAuthor: boolean; createdAt: string; author: Author }
+export type Comment = { id: string; bodyText: string; viewerDidAuthor: boolean; createdAt: string; author: Author }
 export type MinePr = {
   id: string
   number: number
@@ -111,7 +117,17 @@ declare module 'claude-code' {
 }
 
 export type RepoSetting = { tracked: boolean; kinds: Kind[] }
-export type Settings = { allRepos: boolean; defaults: Kind[]; repos: Record<string, RepoSetting> }
+export type Trigger = 'review' | 'comment'
+export type ActionMode = 'off' | 'ask' | 'session' | 'background'
+export type Ask = { id: string; trigger: Trigger; prId: string; label: string; text: string }
+export type Run = Ask & { mode: 'session' | 'background' }
+export type Action = { mode: ActionMode; prompt: string }
+export type Settings = {
+  allRepos: boolean
+  defaults: Kind[]
+  repos: Record<string, RepoSetting>
+  actions: Record<Trigger, Action>
+}
 // Inside `declare module 'claude-code'`, a bare `Settings` names the engine's own type.
 export type DoorbellSettings = Settings
 export type PaneState = {
@@ -119,6 +135,8 @@ export type PaneState = {
   repos: string[] | null
   error: string | null
   filter: string
+  /** Prompt text rejected for unknown placeholders, kept so it can be fixed. */
+  drafts: Partial<Record<Trigger, string>>
   save: 'saved' | 'failed' | null
   /** settings.json exists but does not parse. */
   isInvalid: boolean

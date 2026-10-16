@@ -55,7 +55,7 @@ test('release alias skips drafts and prereleases', async () => {
 test('BEHIND marks shipped and notifies', async () => {
   const out = run('BEHIND')
   expect(out.items[0]).toMatchObject({ tag: 'v2', key: 's:PR9', kind: 'shipped', repo: 'app', fullRepo: 'acme/app', at: 1000 })
-  expect(out.events[0]).toMatchObject({ key: 's:PR9', notify: true, detail: 'v2', label: 'app#9' })
+  expect(out.events[0]).toMatchObject({ key: 's:PR9', notify: true, detail: 'v2', label: 'app#9', url: 'https://github.com/acme/app/pull/1', number: 9, excerpt: '' })
   expect(out.pendingShip.PR9).toBeUndefined()
   expect(out.releases[REPO]).toBe('v2')
 })

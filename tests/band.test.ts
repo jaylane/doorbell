@@ -83,9 +83,26 @@ test('an item whose repo is untracked or whose kind is off is hidden; status seg
     allRepos: false,
     defaults: [],
     repos: { 'acme/app': { tracked: true, kinds: ['review' as const] } },
+    actions: DEFAULT_SETTINGS.actions,
   }
   expect(segments(state({ items, error: 'rate' }), NOW, false, settings).map((x) => x.text)).toEqual([
     '👀 app#1',
     '⚠ rate limited',
   ])
+})
+
+test('an item with a pending ask of its kind carries the ask id', async () => {
+  const items = [item({ prId: 'P', kind: 'review' }), item({ prId: 'P', kind: 'comment' }), item({ prId: 'Q', kind: 'review' })]
+  const asks = [{ id: 'act:r', trigger: 'review' as const, prId: 'P', label: 'app#1', text: '/review u' }]
+  expect(segments(state({ items, asks }), NOW, false, DEFAULT_SETTINGS).map((x) => x.ask)).toEqual(['act:r', undefined, undefined])
+})
+
+test('action failed follows query, action paused follows partial', async () => {
+  const st = (over: Partial<State>, failed: boolean) => segments(state(over), NOW, false, DEFAULT_SETTINGS, failed).map((x) => x.text)
+  expect(st({ error: 'query' }, true)).toEqual(['⚠ GitHub error'])
+  expect(st({ error: 'partial' }, true)).toEqual(['⚠ action failed'])
+  expect(st({}, true)).toEqual(['⚠ action failed'])
+  expect(st({ error: 'partial', actionPaused: true }, false)).toEqual(['⚠ partial'])
+  expect(st({ actionPaused: true, lastOkAt: NOW - 600_000 }, false)).toEqual(['⚠ action paused'])
+  expect(segments(state({ actionPaused: true }), NOW, false, DEFAULT_SETTINGS)).toEqual([{ text: '⚠ action paused', dim: false, warn: true }])
 })

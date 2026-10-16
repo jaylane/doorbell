@@ -19,7 +19,7 @@ test('direct request on a ready PR notifies', async () => {
   expect(out.items).toHaveLength(1)
   expect(out.items[0]).toMatchObject({ kind: 'review', dim: false, repo: 'app', fullRepo: 'acme/app', who: ['alice'], at: 500 })
   expect(out.events).toEqual([
-    { key: 'rr:PR1:500', kind: 'review', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'alice', detail: '' },
+    { key: 'rr:PR1:500', kind: 'review', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'alice', detail: '', url: 'https://github.com/acme/app/pull/1', number: 1, excerpt: '' },
   ])
 })
 

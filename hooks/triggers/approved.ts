@@ -45,6 +45,9 @@ export function approvals(d: Data, ctx: Ctx): TriggerOut {
         title: pr.title,
         who: r.author?.login ?? '',
         detail: pr.reviewDecision === 'APPROVED' ? 'ready to merge' : '',
+        url: pr.url,
+        number: pr.number,
+        excerpt: '',
       })
     }
   }

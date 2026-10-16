@@ -14,13 +14,18 @@ export const EMPTY: State = {
   latest: {},
   pendingShip: {},
   pathlessQueryFailures: 0,
+  asks: [],
+  actionRuns: { review: [], comment: [] },
+  actionPaused: false,
 }
 
 export const cacheDir = (home: string) => `${home}/.cache/doorbell`
 
 export async function readState(io: Io, dir: string): Promise<State | null> {
   try {
-    return JSON.parse(await io.fs.read(`${dir}/state.json`)) as State
+    // A file written before a field existed still reads with that field's empty value.
+    const s = JSON.parse(await io.fs.read(`${dir}/state.json`)) as State | null
+    return s && { ...EMPTY, ...s }
   } catch {
     return null
   }

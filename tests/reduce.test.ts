@@ -10,7 +10,7 @@ const DAY = 86_400_000
 const NOW = 100 * DAY
 const user = (login: string) => ({ login, __typename: 'User' })
 const ev = (over: Partial<Event>): Event => ({
-  key: 'k', kind: 'comment', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Fix login', who: 'alice', detail: '', ...over,
+  key: 'k', kind: 'comment', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Fix login', who: 'alice', detail: '', url: 'https://github.com/acme/app/pull/1', number: 1, excerpt: '', ...over,
 })
 const approved = (id = 'R1') =>
   minePr({ reviewDecision: 'APPROVED', latestOpinionatedReviews: { nodes: [{ id, state: 'APPROVED', author: user('bob') }] } })
@@ -155,4 +155,10 @@ test('turning a kind back on shows its items with no note', async () => {
   expect(off.state.items).toHaveLength(1)
   expect(on.state.items).toHaveLength(1)
   expect(on.notes).toEqual([])
+})
+
+test('the summary note keeps the press ▶ suffix when any PR gained an ask', async () => {
+  const evs = [1, 2, 3, 4].map((n) => ev({ prId: `P${n}`, label: `app#${n}` }))
+  expect(notesOf(evs, new Set(['P3']))).toEqual([{ title: '4 PR updates', body: 'app#1, app#2, app#3, app#4 · press ▶ to run' }])
+  expect(notesOf(evs, new Set(['P9']))[0]!.body).toBe('app#1, app#2, app#3, app#4')
 })

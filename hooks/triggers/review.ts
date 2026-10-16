@@ -44,6 +44,9 @@ export function reviews(d: Data, ctx: Ctx): TriggerOut {
       title: pr.title,
       who,
       detail: '',
+      url: pr.url,
+      number: pr.number,
+      excerpt: '',
     })
   }
   return { items, events }

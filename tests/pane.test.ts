@@ -29,6 +29,7 @@ test('rows reflect effective kinds and tracking; untracked rows have all kinds f
       'acme/a': { tracked: true, kinds: ['review', 'shipped'] },
       'acme/b': { tracked: false, kinds: [] },
     },
+    actions: DEFAULT_SETTINGS.actions,
   }
   const v = paneView(s, [], null, [], '')
   expect(v.allRepos).toBe(false)
@@ -79,4 +80,19 @@ test('a load error keeps the cap footer when rows are capped', async () => {
   const repos = many(45)
   const s: Settings = { ...DEFAULT_SETTINGS, repos: Object.fromEntries(repos.map((r) => [r, { tracked: true, kinds: [] }])) }
   expect(paneView(s, null, 'offline', [], '').footer).toBe("couldn't load repos: offline · showing 40 of 45 · type to filter")
+})
+
+test('paneView reports unknown placeholders and empty prompts', async () => {
+  const s: Settings = {
+    ...DEFAULT_SETTINGS,
+    actions: { review: { mode: 'ask', prompt: '' }, comment: { mode: 'session', prompt: 'fix {prurl} in {repo}' } },
+  }
+  const v = paneView(s, [], null, [], '', {})
+  expect(v.actions.review).toEqual({ mode: 'ask', prompt: '', problem: 'off: prompt is empty' })
+  expect(v.actions.comment.problem).toBe('unknown: {prurl}')
+  expect(paneView(DEFAULT_SETTINGS, [], null, [], '', { review: 'x {a} {b}' }).actions.review).toEqual({
+    mode: 'off',
+    prompt: 'x {a} {b}',
+    problem: 'unknown: {a}, {b}',
+  })
 })

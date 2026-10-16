@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { DEFAULT_ACTIONS } from '../hooks/settings'
 import type { Item, State } from '../types'
 import { data, ghOut, minePr, pending, rrPr, state } from './fixtures'
 
@@ -34,11 +35,17 @@ type World = {
   mvHold: Promise<unknown> | null
   opened: string[]
   commands: string[]
+  logs: string[]
+  // While set, every ui.invalidate throws.
+  invalidateThrows: boolean
+  // What the mod asked the engine to run: `command:<name> <args>`, `prompt:<text>`, `spawn:<description>|<prompt>`.
+  ran: string[]
+  slashCommands: string[]
 }
 
 // The engine beneath the mod: files, processes and notifications answered from memory.
 const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean } = {}): World => {
-  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [] }
+  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [], logs: [], invalidateThrows: false, ran: [], slashCommands: ['review'] }
   for (const [p, text] of Object.entries(opts.files ?? {})) w.files.set(p, { text, mtimeMs: clock.now() })
   const need = (path: string) => {
     const f = w.files.get(path)
@@ -91,7 +98,24 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     w.notify.push(e.text)
     return { value: { isSent: true as const, channel: 'iterm2' as const } }
   })
-  on('ui.log', () => ({ value: undefined }))
+  on('ui.log', ($, e) => {
+    w.logs.push(e.text)
+    return { value: undefined }
+  })
+  on('command.list', () => ({ value: w.slashCommands.map((name) => ({ name, description: '', source: 'user' as const })) }))
+  on('command.run', ($, e) => {
+    w.ran.push(`command:${e.command} ${e.args}`)
+    return {}
+  })
+  on('prompt.submit', ($, e) => {
+    w.ran.push(`prompt:${e.text}`)
+    return { text: e.text }
+  })
+  on('agent.spawn', ($, e) => {
+    w.ran.push(`spawn:${e.description}|${e.prompt}`)
+    return { model: 'm', agentId: 'A1' }
+  })
+
   on('command.register', ($, e) => {
     w.commands.push(`${e.name}: ${e.description}`)
     return { value: { command: e.name } }
@@ -100,7 +124,10 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     w.opened.push(e.id)
     return { value: { isPlaced: true as const } }
   })
-  on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.invalidate', () => {
+    if (w.invalidateThrows) throw new Error('invalidate failed')
+    return { value: undefined }
+  })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   // What the host draws when the band yields: an empty row.
@@ -437,7 +464,7 @@ test('the all-repos and column boxes toggle every repo at once', async ($, on) =
   await $.session.start(START)
   const ui = await $.ui.mount(PANE)
   await ui.press({ key: 'col:review' })
-  expect(fileSettings(w)).toEqual({ allRepos: true, defaults: ['comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: [] } } })
+  expect(fileSettings(w)).toEqual({ allRepos: true, defaults: ['comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: [] } }, actions: DEFAULT_ACTIONS })
   await ui.press({ key: 'all-repos' })
   expect(fileSettings(w).allRepos).toBe(false)
   await ui.press({ key: 'col:all' })
@@ -538,4 +565,173 @@ test('a failed save reverts to the file at the next follower check', async ($, o
   expect(await bandTexts($)).toEqual([])
   await clock.advance(10_000)
   expect(await bandTexts($)).toEqual(['👀 web#9'])
+})
+
+const pr2 = rrPr({ id: 'PR2', number: 2, url: 'https://github.com/acme/app/pull/2' })
+const actionSettings = (mode: string, prompt = '/review {pr_url}') =>
+  JSON.stringify({ allRepos: true, defaults: ['review', 'comment', 'approved', 'shipped'], repos: {}, actions: { review: { mode, prompt }, comment: { mode: 'off', prompt: '' } } })
+
+// A leader whose second poll brings a new review request on app#2, which fires the review action.
+const fireReview = async ($: Engine, on: On, mode: string, prompt?: string) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: { [`${DIR}/settings.json`]: actionSettings(mode, prompt) } })
+  w.gh.push(rr(rrPr()), rr(rrPr(), pr2), rr(rrPr(), pr2))
+  await $.session.start(START)
+  await clock.advance(20_000)
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(2)
+  return { clock, w }
+}
+const askButtons = async ($: Engine) => {
+  const ui = await $.ui.mount(BAND)
+  const keys = (await ui.findAll({ type: 'Button' })).map((b) => b.key)
+  await ui.unmount()
+  return keys
+}
+const pressAsk = async ($: Engine, key: string) => {
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key })
+  await ui.unmount()
+}
+const handledIds = (w: World) => JSON.parse(w.files.get(`${DIR}/handled.json`)!.text).ids as string[]
+
+test('ask mode shows ▶ and pressing it runs the action and writes handled.json', async ($, on) => {
+  const { clock, w } = await fireReview($, on, 'ask')
+  expect(w.ran).toEqual([])
+  expect(w.notify[0]).toContain('press ▶ to run')
+  const id = fileState(w).asks[0]!.id
+  expect(await askButtons($)).toEqual([`ask:${id}`])
+  await pressAsk($, `ask:${id}`)
+  expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2'])
+  expect(handledIds(w)).toEqual([id])
+  expect(await askButtons($)).toEqual([])
+  // The leader reads handled.json on its next beat and drops the ask from the shared state.
+  w.gh.push(rr(rrPr(), pr2))
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(3)
+  expect(fileState(w).asks).toEqual([])
+  // The poll that drops the ask still sees it in the previous state, so the id is pruned one poll later.
+  expect(handledIds(w)).toEqual([id])
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(4)
+  expect(JSON.parse(w.files.get(`${DIR}/handled.json`)!.text)).toEqual({ ids: [] })
+})
+
+test('session mode runs the slash command on the leader', async ($, on) => {
+  const { w } = await fireReview($, on, 'session')
+  expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2'])
+  expect(await askButtons($)).toEqual([])
+})
+
+test('session mode submits a plain prompt as text', async ($, on) => {
+  const { w } = await fireReview($, on, 'session', 'Look at {pr_url}')
+  expect(w.ran).toEqual(['prompt:Look at https://github.com/acme/app/pull/2'])
+})
+
+// The kit keeps a test hook's agentId from reaching the plugin, so Running and Finished are covered in run.test.ts.
+test('background mode spawns a subagent with the Skill-tool prompt', async ($, on) => {
+  const { w } = await fireReview($, on, 'background')
+  expect(w.ran).toEqual(['spawn:Doorbell: app#2|Use the review skill (Skill tool) with these arguments: https://github.com/acme/app/pull/2'])
+})
+
+test('a follower never runs an action but shows and runs ▶', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const ask = { id: 'act:review:PR9', trigger: 'review', prId: 'PR9', label: 'web#9', text: '/review https://github.com/acme/web/pull/9' }
+  const w = world(on, clock, {
+    files: {
+      ...followerFiles({ [`${DIR}/settings.json`]: actionSettings('session') }),
+      [`${DIR}/state.json`]: JSON.stringify(state({ items: [reviewItem], asks: [ask as State['asks'][number]], lastOkAt: T0, bootstrapped: true })),
+    },
+  })
+  await $.session.start(START)
+  await clock.advance(60_000)
+  expect(w.ran).toEqual([])
+  expect(await askButtons($)).toEqual(['ask:act:review:PR9'])
+  await pressAsk($, 'ask:act:review:PR9')
+  expect(w.ran).toEqual(['command:review https://github.com/acme/web/pull/9'])
+  expect(handledIds(w)).toEqual(['act:review:PR9'])
+  await clock.advance(60_000)
+  expect(w.ran).toHaveLength(1)
+  expect(graphqlCalls(w)).toBe(0)
+})
+
+test('a failed run shows ⚠ action failed', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: { [`${DIR}/settings.json`]: actionSettings('session') } })
+  w.slashCommands = []
+  w.gh.push(rr(rrPr()), rr(rrPr(), pr2))
+  await $.session.start(START)
+  await clock.advance(80_000)
+  expect(w.ran).toEqual([])
+  expect(w.logs).toContain('doorbell: command not found: /review')
+  expect(await bandTexts($)).toEqual(['👀 app#1', '👀 app#2', '⚠ action failed'])
+  w.gh.push(rr(rrPr(), pr2))
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(3)
+  expect(await askButtons($)).toEqual([`ask:act:rr:PR2:${T0 + 80_000}`])
+  expect(fileState(w).asks.map((a) => a.id)).toEqual([`act:rr:PR2:${T0 + 80_000}`])
+})
+
+test('a run that rejects never blocks the next poll\'s run', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: { [`${DIR}/settings.json`]: actionSettings('session') } })
+  const pr3 = rrPr({ id: 'PR3', number: 3, url: 'https://github.com/acme/app/pull/3' })
+  w.gh.push(rr(rrPr()), rr(rrPr(), pr2), rr(rrPr(), pr2, pr3))
+  await $.session.start(START)
+  await clock.advance(20_000)
+  w.invalidateThrows = true
+  await clock.advance(60_000)
+  w.invalidateThrows = false
+  expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2'])
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(3)
+  expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2', 'command:review https://github.com/acme/app/pull/3'])
+})
+
+test('selecting auto · session saves mode session', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.select({ key: 'mode:review', value: 'session' })
+  expect(fileSettings(w).actions.review.mode).toBe('session')
+  await ui.unmount()
+})
+
+test('submitting a prompt with {prurl} does not save and shows unknown: {prurl}', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.input({ key: 'prompt:comment', text: 'look at {prurl}', kind: 'submit' })
+  expect(w.files.has(`${DIR}/settings.json`)).toBe(false)
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).toContain('unknown: {prurl}')
+  await ui.unmount()
+})
+
+test('submitting a valid prompt saves it', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.input({ key: 'prompt:comment', text: 'look at {prurl}', kind: 'submit' })
+  await ui.input({ key: 'prompt:comment', text: 'review {pr_url}', kind: 'submit' })
+  expect(fileSettings(w).actions.comment.prompt).toBe('review {pr_url}')
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).not.toContain('unknown: {prurl}')
+  await ui.unmount()
+})
+
+test('a half-typed action prompt survives a redraw, then saves and clears', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  const value = async () => (await ui.find({ type: 'Input', key: 'prompt:review' }))!.props.value
+  await ui.input({ key: 'prompt:review', text: 'half {pr_', kind: 'change' })
+  await clock.advance(10_000)
+  expect(await value()).toBe('half {pr_')
+  await ui.input({ key: 'prompt:review', text: 'review {pr_url}', kind: 'submit' })
+  expect(fileSettings(w).actions.review.prompt).toBe('review {pr_url}')
+  expect(await value()).toBe('review {pr_url}')
+  await ui.unmount()
 })
