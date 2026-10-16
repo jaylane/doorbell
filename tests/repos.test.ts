@@ -47,3 +47,14 @@ test('offline gives error offline', async () => {
   expect(await listRepos(fakeIo({ run: () => ({ exitCode: 1 }) }).io, 'gh')).toEqual({ repos: [], error: 'offline' })
   expect(await listRepos(fakeIo({ run: () => 'throw' }).io, 'gh')).toEqual({ repos: [], error: 'offline' })
 })
+
+test('null nodes or pageInfo does not throw', async () => {
+  const body = (repositories: unknown) => JSON.stringify({ data: { viewer: { repositories } } })
+  expect(await listRepos(fakeIo({ run: () => ({ exitCode: 1, stdout: body({ nodes: null, pageInfo: null }) }) }).io, 'gh')).toEqual({ repos: [], error: null })
+  expect(await listRepos(fakeIo({ run: () => ({ exitCode: 1, stdout: body({ nodes: [null, { nameWithOwner: 'a/x', isArchived: false }] }) }) }).io, 'gh')).toEqual({ repos: ['a/x'], error: null })
+})
+
+test('malformed JSON gives GitHub error', async () => {
+  expect(await listRepos(fakeIo({ run: () => ({ exitCode: 0, stdout: '<html>' }) }).io, 'gh')).toEqual({ repos: [], error: 'GitHub error' })
+  expect(await listRepos(fakeIo({ run: () => ({ exitCode: 0, stdout: '{"data":{"viewer":{"repositories":5}}}' }) }).io, 'gh')).toEqual({ repos: [], error: null })
+})

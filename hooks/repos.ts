@@ -12,8 +12,17 @@ type Repos = {
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
 }
 
+// Partial GraphQL errors can null any field; the settings pane waits on this promise, so it must never reject.
 export async function listRepos(io: Io, gh: string): Promise<{ repos: string[]; error: string | null }> {
   const repos: string[] = []
+  try {
+    return await fetchPages(io, gh, repos)
+  } catch {
+    return { repos, error: 'GitHub error' }
+  }
+}
+
+async function fetchPages(io: Io, gh: string, repos: string[]): Promise<{ repos: string[]; error: string | null }> {
   let cursor: string | null = null
   for (let i = 0; i < MAX_PAGES; i++) {
     const argv = [gh, 'api', 'graphql', '-f', `query=${QUERY}`, ...(cursor ? ['-F', `cursor=${cursor}`] : [])]
@@ -30,8 +39,8 @@ export async function listRepos(io: Io, gh: string): Promise<{ repos: string[]; 
     } catch {}
     const page = body.data?.viewer?.repositories
     if (!page) return { repos, error: body.errors?.[0]?.message ?? 'GitHub error' }
-    for (const n of page.nodes) if (!n.isArchived) repos.push(n.nameWithOwner)
-    if (!page.pageInfo.hasNextPage || !page.pageInfo.endCursor) break
+    for (const n of page.nodes ?? []) if (n && !n.isArchived) repos.push(n.nameWithOwner)
+    if (!page.pageInfo?.hasNextPage || !page.pageInfo.endCursor) break
     cursor = page.pageInfo.endCursor
   }
   return { repos, error: null }
