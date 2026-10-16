@@ -606,9 +606,15 @@ test('ask mode shows ▶ and pressing it runs the action and writes handled.json
   expect(handledIds(w)).toEqual([id])
   expect(await askButtons($)).toEqual([])
   // The leader reads handled.json on its next beat and drops the ask from the shared state.
+  w.gh.push(rr(rrPr(), pr2))
   await clock.advance(60_000)
   expect(graphqlCalls(w)).toBe(3)
   expect(fileState(w).asks).toEqual([])
+  // The poll that drops the ask still sees it in the previous state, so the id is pruned one poll later.
+  expect(handledIds(w)).toEqual([id])
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(4)
+  expect(JSON.parse(w.files.get(`${DIR}/handled.json`)!.text)).toEqual({ ids: [] })
 })
 
 test('session mode runs the slash command on the leader', async ($, on) => {
@@ -659,6 +665,11 @@ test('a failed run shows ⚠ action failed', async ($, on) => {
   expect(w.ran).toEqual([])
   expect(w.logs).toContain('doorbell: command not found: /review')
   expect(await bandTexts($)).toEqual(['👀 app#1', '👀 app#2', '⚠ action failed'])
+  w.gh.push(rr(rrPr(), pr2))
+  await clock.advance(60_000)
+  expect(graphqlCalls(w)).toBe(3)
+  expect(await askButtons($)).toEqual([`ask:act:rr:PR2:${T0 + 80_000}`])
+  expect(fileState(w).asks.map((a) => a.id)).toEqual([`act:rr:PR2:${T0 + 80_000}`])
 })
 
 test('a run that rejects never blocks the next poll\'s run', async ($, on) => {

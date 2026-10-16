@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { fakeIo } from './fakes'
-import { addHandled, handledMtime, readHandled } from '../hooks/handled'
+import { addHandled, handledMtime, pruneHandled, readHandled } from '../hooks/handled'
 
 const D = '/c'
 
@@ -33,4 +33,13 @@ test('addHandled writes tmp then mv, and rejects when mv fails', async () => {
   let failed = false
   await addHandled(io, D, 'S1', 'z').catch(() => (failed = true))
   expect(failed).toBe(true)
+})
+
+test('pruneHandled drops unreferenced ids, keeps referenced ones, and skips the write when nothing drops', async () => {
+  const { io, argv, files } = fakeIo({ files: { [`${D}/handled.json`]: '{"ids":["a","b","c"]}' } })
+  await pruneHandled(io, D, 'S1', (id) => id !== 'b')
+  expect(JSON.parse(files.get(`${D}/handled.json`)!.text)).toEqual({ ids: ['a', 'c'] })
+  expect(argv).toEqual([['mv', `${D}/handled.json.S1.tmp`, `${D}/handled.json`]])
+  await pruneHandled(io, D, 'S1', () => true)
+  expect(argv).toHaveLength(1)
 })

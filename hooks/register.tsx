@@ -5,7 +5,7 @@ import type { Alias, Built, Config, Note, PaneState, Run, Settings, State } from
 import { afterFailure } from './backoff'
 import { segments } from './band'
 import { findGh, runGh, type GhOutcome } from './gh'
-import { addHandled, handledMtime, readHandled } from './handled'
+import { addHandled, handledMtime, pruneHandled, readHandled } from './handled'
 import { ensureDir, release, tryLead } from './lease'
 import { send } from './notify'
 import { drawPane, paneView } from './pane'
@@ -86,6 +86,8 @@ async function poll($: EngineInterface, s: State, now: number) {
     const { state: next, notes, runs } = outcome(s, await runGh($, gh!, built), built, now, await read($, settings))
     try {
       await writeState($, dir, sessionId, next)
+      // The leader holds what it wrote; reloading it later would drop an ask a failed run put back in the atom.
+      lastMtime = await stateMtime($, dir)
     } catch (err) {
       // The old state stays so the next poll redoes the unsent notes; the attempt is kept so it waits its turn.
       $.ui.log(`doorbell: ${String(err)}`)
@@ -93,6 +95,13 @@ async function poll($: EngineInterface, s: State, now: number) {
       return
     }
     await set($, next)
+    // An id stays while the ask is in either state, so a session whose state is one poll behind still hides it.
+    const referenced = new Set([...s.asks, ...next.asks].map((a) => a.id))
+    if (handled.some((id) => !referenced.has(id))) {
+      const turn = marking.then(() => pruneHandled($, dir, sessionId, (id) => referenced.has(id)))
+      marking = turn.catch(() => {})
+      await turn.then(() => (lastHandledMtime = undefined)).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
+    }
     if (cfg.notify) await send($, notes)
     // A run waits for the session to go idle, which must not hold up the next poll.
     if (runs.length) acting = acting.then(() => perform($, runs)).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
@@ -111,6 +120,10 @@ async function perform($: EngineInterface, runs: Run[]) {
     } catch (err) {
       $.ui.log(`doorbell: ${reason(err)}`)
       actionFailed = true
+      // Put it back as an ask so there is a ▶ to retry; the next poll carries it forward and persists it.
+      await update($, state, (s) =>
+        s.asks.some((a) => a.id === run.id) ? s : { ...s, asks: [...s.asks, { id: run.id, trigger: run.trigger, prId: run.prId, label: run.label, text: run.text }] },
+      )
     }
   }
   $.ui.invalidate('ui.render')
