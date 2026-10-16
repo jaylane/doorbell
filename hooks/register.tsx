@@ -106,7 +106,7 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 async function perform($: EngineInterface, runs: Run[]) {
   for (const run of runs) {
     try {
-      await runAction($, run, cfg.notify)
+      await runAction($, run, cfg.notify, await $.clock.now())
       actionFailed = false
     } catch (err) {
       $.ui.log(`doorbell: ${reason(err)}`)
@@ -197,8 +197,8 @@ async function heartbeat($: EngineInterface) {
   await reloadSettings($)
   await reloadHandled($)
   // A failed agent list must not stop this beat from renewing the lease.
-  await checkAgents($, cfg.notify).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
   const now = await $.clock.now()
+  await checkAgents($, cfg.notify, now).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
   const won = await tryLead($, dir, sessionId, now)
   if (won) {
     // The old leader may have written since this session last refreshed; polling from older seen keys would re-notify.

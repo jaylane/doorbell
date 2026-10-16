@@ -48,51 +48,66 @@ test('runSession rejects a command the session does not have, without running it
 
 test('background spawns with the Skill-tool prompt and notifies Running', async () => {
   const f = fake({ spawn: { agentId: 'B1' } })
-  await runAction(f.$, run(), true)
+  await runAction(f.$, run(), true, 0)
   expect(f.calls).toEqual([['agent.spawn', { prompt: 'Use the review skill (Skill tool) with these arguments: https://x/2', description: 'Doorbell: app#2' }]])
   expect(f.notes).toEqual(['Running app#2: in a background agent'])
   f.agents.push({ id: 'B1', status: 'completed' })
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
 })
 
 test('a denied spawn rejects with the reason', async () => {
   const f = fake({ spawn: { deny: 'no agents here' } })
-  await expect(runAction(f.$, run(), true)).rejects.toThrow('no agents here')
+  await expect(runAction(f.$, run(), true, 0)).rejects.toThrow('no agents here')
   expect(f.notes).toEqual([])
 })
 
 test('Finished once the agent reports completed; idle is not done', async () => {
   const f = fake({ spawn: { agentId: 'C1' } })
-  await runAction(f.$, run(), true)
+  await runAction(f.$, run(), true, 0)
   f.agents.push({ id: 'C1', status: 'running' })
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
   f.agents[0]!.status = 'idle'
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
   expect(f.notes).toEqual(['Running app#2: in a background agent'])
   f.agents[0]!.status = 'completed'
-  await checkAgents(f.$, true)
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
+  await checkAgents(f.$, true, 0)
   expect(f.notes).toEqual(['Running app#2: in a background agent', 'Finished app#2: background agent done'])
 })
 
 test('Finished when a seen agent vanishes, not before it was ever listed', async () => {
   const f = fake({ spawn: { agentId: 'D1' } })
-  await runAction(f.$, run(), false)
-  await checkAgents(f.$, true)
+  await runAction(f.$, run(), false, 0)
+  await checkAgents(f.$, true, 0)
   expect(f.notes).toEqual([])
   f.agents.push({ id: 'D1', status: 'running' })
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
   f.agents.length = 0
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
   expect(f.notes).toEqual(['Finished app#2: background agent done'])
 })
 
 test('failed and killed agents are done', async () => {
   const f = fake({ spawn: { agentId: 'E1' } })
-  await runAction(f.$, run(), false)
+  await runAction(f.$, run(), false, 0)
   const g = fake({ spawn: { agentId: 'E2' } })
-  await runAction(g.$, run({ label: 'app#3' }), false)
+  await runAction(g.$, run({ label: 'app#3' }), false, 0)
   f.agents.push({ id: 'E1', status: 'failed' }, { id: 'E2', status: 'killed' })
-  await checkAgents(f.$, true)
+  await checkAgents(f.$, true, 0)
   expect(f.notes).toEqual(['Finished app#2: background agent done', 'Finished app#3: background agent done'])
+})
+
+test('an agent never listed for 10 minutes is dropped without a Finished note', async () => {
+  const f = fake({ spawn: { agentId: 'F1' } })
+  await runAction(f.$, run(), false, 0)
+  await checkAgents(f.$, true, 600_000)
+  f.agents.push({ id: 'F1', status: 'completed' })
+  await checkAgents(f.$, true, 600_001)
+  expect(f.notes).toEqual(['Finished app#2: background agent done'])
+  const g = fake({ spawn: { agentId: 'F2' } })
+  await runAction(g.$, run(), false, 0)
+  await checkAgents(g.$, true, 600_001)
+  g.agents.push({ id: 'F2', status: 'completed' })
+  await checkAgents(g.$, true, 600_002)
+  expect(g.notes).toEqual([])
 })
