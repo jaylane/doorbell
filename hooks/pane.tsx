@@ -136,7 +136,9 @@ export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneVi
             {view.actions[t].problem && <Text color="yellow">{view.actions[t].problem}</Text>}
           </Box>
         ))}
-      <Text dimColor>{`placeholders: ${PLACEHOLDERS.map((n) => `{${n}}`).join(' ')} · max 3 automatic runs per hour`}</Text>
+      {'Select' in els && 'Input' in els && (
+        <Text dimColor>{`placeholders: ${PLACEHOLDERS.map((n) => `{${n}}`).join(' ')} · max 3 automatic runs per hour`}</Text>
+      )}
       {'Input' in els && (
         <els.Input
           key="filter"
