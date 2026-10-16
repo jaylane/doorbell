@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { fakeIo } from './fakes'
 import { data, ghOut } from './fixtures'
+import type { Io } from '../hooks/io'
 import { findGh, parseGh, runGh } from '../hooks/gh'
 
 const ok = (stdout: string, exitCode = 0, stderr = '') => parseGh({ exitCode, stdout, stderr })
@@ -85,4 +86,33 @@ test('runGh passes the query and variables as -f fields with -i', async () => {
 test('runGh maps a rejected run to offline', async () => {
   const { io } = fakeIo({ run: () => 'throw' })
   expect(await runGh(io, 'gh', { query: 'q', variables: {}, aliases: {} })).toEqual({ kind: 'offline' })
+})
+
+test('a PR title mentioning rate limit in data is still ok', async () => {
+  const d = data({ mine: { issueCount: 1, nodes: [{ title: 'Add rate limit to API' } as never] } })
+  expect(ok(ghOut(200, {}, { data: d })).kind).toBe('ok')
+})
+
+test('200 with x-ratelimit-remaining 0 and data is ok', async () => {
+  expect(ok(ghOut(200, { 'X-RateLimit-Remaining': '0' }, { data: data() })).kind).toBe('ok')
+})
+
+test('a non-numeric Retry-After becomes null', async () => {
+  const r = ok(ghOut(403, { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' }, { message: 'x' }), 1)
+  expect(r).toEqual({ kind: 'rate', retryAfterMs: null, resetAt: null })
+})
+
+test('findGh and runGh pass their timeouts', async () => {
+  const inits: unknown[] = []
+  const io = {
+    process: {
+      run: async (_a: readonly string[], init?: unknown) => {
+        inits.push(init)
+        return { exitCode: 0, stdout: ghOut(200, {}, { data: data() }), stderr: '' }
+      },
+    },
+  } as unknown as Io
+  await findGh(io)
+  await runGh(io, 'gh', { query: 'q', variables: {}, aliases: {} })
+  expect(inits).toEqual([{ timeoutMs: 5000 }, { timeoutMs: 30000 }])
 })

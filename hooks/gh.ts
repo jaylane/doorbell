@@ -21,7 +21,7 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
   const status = Number(/^HTTP\/\S+ (\d{3})/.exec(head)?.[1] ?? 0)
   const header = (name: string) => new RegExp(`^${name}:[ \\t]*(.*?)\\r?$`, 'im').exec(head)?.[1]
 
-  let body: { data?: Data; errors?: GhError[] } = {}
+  let body: { data?: Data; errors?: GhError[]; message?: string } = {}
   try {
     body = JSON.parse(text) ?? {}
   } catch {}
@@ -32,15 +32,17 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
     status === 403 ||
     status === 429 ||
     (header('x-ratelimit-remaining') === '0' && !body.data) ||
-    /rate limit/i.test(text) ||
+    (!body.data && [body.message, ...errors.map((e) => e.message)].some((m) => /rate limit/i.test(m ?? ''))) ||
     errors.some((e) => e.type === 'RATE_LIMITED')
   ) {
+    // Retry-After may be an HTTP-date; a NaN here would stall polling forever.
+    const seconds = (v?: string) => (v && Number.isFinite(Number(v)) ? Number(v) * 1000 : null)
     const retry = header('retry-after')
     const reset = header('x-ratelimit-reset')
     return {
       kind: 'rate',
-      retryAfterMs: retry ? Number(retry) * 1000 : null,
-      resetAt: reset ? Number(reset) * 1000 : null,
+      retryAfterMs: seconds(retry),
+      resetAt: seconds(reset),
     }
   }
   if (status >= 500) return { kind: 'offline' }
@@ -56,7 +58,7 @@ export const parseGh = (r: { exitCode: number; stdout: string; stderr: string })
 export const findGh = async (io: Io): Promise<string | null> => {
   for (const gh of ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh']) {
     try {
-      if ((await io.process.run([gh, '--version'])).exitCode === 0) return gh
+      if ((await io.process.run([gh, '--version'], { timeoutMs: 5000 })).exitCode === 0) return gh
     } catch {}
   }
   return null
