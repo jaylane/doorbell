@@ -15,7 +15,7 @@ const pr = (decision: string | null, author: Author = bob, st = 'APPROVED') =>
     },
   })
 const item = (over: Partial<Item> = {}): Item => ({
-  key: 'a:R1', kind: 'approved', prId: 'PR1', repo: 'app', number: 1, title: 'Add thing',
+  key: 'a:R1', kind: 'approved', prId: 'PR1', repo: 'app', fullRepo: 'acme/app', number: 1, title: 'Add thing',
   url: 'u', at: 0, who: ['bob'], count: 1, dim: false, tag: null, ...over,
 })
 
@@ -23,7 +23,7 @@ test('human approval appears and notifies with ready to merge', async () => {
   const out = approvals(pr('APPROVED'), ctx())
   expect(out.items[0]).toMatchObject({ key: 'a:R1', kind: 'approved', who: ['bob'], at: 1000 })
   expect(out.events).toEqual([
-    { key: 'a:R1', kind: 'approved', notify: true, prId: 'PR1', label: 'app#1', title: 'Add thing', who: 'bob', detail: 'ready to merge' },
+    { key: 'a:R1', kind: 'approved', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'bob', detail: 'ready to merge' },
   ])
 })
 

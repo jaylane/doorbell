@@ -109,6 +109,7 @@ const reviewItem: Item = {
   kind: 'review',
   prId: 'PR9',
   repo: 'web',
+  fullRepo: 'acme/web',
   number: 9,
   title: 'Fix it',
   url: 'https://github.com/acme/web/pull/9',

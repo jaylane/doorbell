@@ -5,6 +5,8 @@ export type Item = {
   prId: string
   /** Name without owner, for display. */
   repo: string
+  /** owner/name. */
+  fullRepo: string
   number: number
   title: string
   url: string

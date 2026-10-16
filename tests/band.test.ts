@@ -5,7 +5,7 @@ import type { Item, State } from '../types'
 
 const NOW = 10_000_000
 const item = (over: Partial<Item>): Item => ({
-  key: 'k', kind: 'review', prId: 'P', repo: 'app', number: 1, title: 't', url: 'u',
+  key: 'k', kind: 'review', prId: 'P', repo: 'app', fullRepo: 'acme/app', number: 1, title: 't', url: 'u',
   at: 0, who: [], count: 1, dim: false, tag: null, ...over,
 })
 const text = (s: State, ghMissing = false) => segments(s, NOW, ghMissing).map((x) => x.text)

@@ -9,7 +9,7 @@ const DAY = 86_400_000
 const NOW = 100 * DAY
 const user = (login: string) => ({ login, __typename: 'User' })
 const ev = (over: Partial<Event>): Event => ({
-  key: 'k', kind: 'comment', notify: true, prId: 'PR1', label: 'app#1', title: 'Fix login', who: 'alice', detail: '', ...over,
+  key: 'k', kind: 'comment', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Fix login', who: 'alice', detail: '', ...over,
 })
 const approved = (id = 'R1') =>
   minePr({ reviewDecision: 'APPROVED', latestOpinionatedReviews: { nodes: [{ id, state: 'APPROVED', author: user('bob') }] } })
@@ -73,7 +73,7 @@ test('an approval first seen after sleep shows from first sight', async () => {
 
 test('overflowed search counts as failed and sets partial', async () => {
   const kept = {
-    key: 'c:PR1', kind: 'comment' as const, prId: 'PR1', repo: 'app', number: 1, title: 't', url: 'u',
+    key: 'c:PR1', kind: 'comment' as const, prId: 'PR1', repo: 'app', fullRepo: 'acme/app', number: 1, title: 't', url: 'u',
     at: 1, who: ['alice'], count: 1, dim: false, tag: null,
   }
   const d = data({ mine: { issueCount: 31, nodes: [] } })
