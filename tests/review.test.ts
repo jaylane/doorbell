@@ -37,8 +37,8 @@ test('draft shows dimmed and does not notify', async () => {
 
 test('bot-authored PR shows dimmed and does not notify', async () => {
   const pr = rrPr({ author: { login: 'dependabot', __typename: 'Bot' } })
-  expect(reviews(rr(pr), ctx())).toEqual({ items: [], events: [] })
-  const out = reviews(rr(pr), ctx({ cfg: { ...cfg, includeBots: true } }))
+  const out = reviews(rr(pr), ctx())
+  expect(out.items).toHaveLength(1)
   expect(out.items[0]?.dim).toBe(true)
   expect(out.events[0]?.notify).toBe(false)
 })
@@ -46,7 +46,7 @@ test('bot-authored PR shows dimmed and does not notify', async () => {
 test('deleted author shows as ghost and counts as a bot', async () => {
   expect(isBot(null)).toBe(true)
   expect(isBot({ login: 'renovate[bot]', __typename: 'User' })).toBe(true)
-  const out = reviews(rr(rrPr({ author: null })), ctx({ cfg: { ...cfg, includeBots: true } }))
+  const out = reviews(rr(rrPr({ author: null })), ctx())
   expect(out.items[0]?.who).toEqual(['ghost'])
 })
 
