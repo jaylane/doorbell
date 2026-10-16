@@ -59,7 +59,7 @@ export type Built = { query: string; variables: Record<string, string>; aliases:
 export type Author = { login: string; __typename: string } | null
 export type Opinion = { id: string; state: string; author: Author }
 export type Review = Opinion & { bodyText: string; viewerDidAuthor: boolean; createdAt: string }
-export type Comment = { id: string; viewerDidAuthor: boolean; createdAt: string; author: Author }
+export type Comment = { id: string; bodyText: string; viewerDidAuthor: boolean; createdAt: string; author: Author }
 export type MinePr = {
   id: string
   number: number

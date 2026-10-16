@@ -8,8 +8,8 @@ const PR_FIELDS = {
    commits(last:1){nodes{commit{committedDate author{user{login}}}}}
    latestOpinionatedReviews(first:10){nodes{id state author{login __typename}}}
    reviews(last:10){nodes{id state bodyText viewerDidAuthor createdAt author{login __typename}}}
-   reviewThreads(last:30){nodes{comments(last:3){nodes{id viewerDidAuthor createdAt author{login __typename}}}}}
-   comments(last:10){nodes{id viewerDidAuthor createdAt author{login __typename}}}
+   reviewThreads(last:30){nodes{comments(last:3){nodes{id bodyText viewerDidAuthor createdAt author{login __typename}}}}}
+   comments(last:10){nodes{id bodyText viewerDidAuthor createdAt author{login __typename}}}
  }`,
   rr: `... on PullRequest{
    id number title url isDraft author{login __typename} repository{nameWithOwner}

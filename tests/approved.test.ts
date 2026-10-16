@@ -23,7 +23,7 @@ test('human approval appears and notifies with ready to merge', async () => {
   const out = approvals(pr('APPROVED'), ctx())
   expect(out.items[0]).toMatchObject({ key: 'a:R1', kind: 'approved', who: ['bob'], at: 1000 })
   expect(out.events).toEqual([
-    { key: 'a:R1', kind: 'approved', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'bob', detail: 'ready to merge' },
+    { key: 'a:R1', kind: 'approved', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'bob', detail: 'ready to merge', url: 'https://github.com/acme/app/pull/1', number: 1, excerpt: '' },
   ])
 })
 

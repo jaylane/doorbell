@@ -9,8 +9,8 @@ const ctx = (over: Partial<Ctx> = {}): Ctx => ({ now: 500, me: 'me', cfg, prev: 
 const mine = (...nodes: MinePr[]) => data({ mine: { issueCount: nodes.length, nodes } })
 const iso = (n: number) => new Date(n).toISOString()
 const user = (login: string) => ({ login, __typename: 'User' })
-const ic = (id: string, login: string, t: number, viewerDidAuthor = false) => ({
-  id, viewerDidAuthor, createdAt: iso(t), author: user(login),
+const ic = (id: string, login: string, t: number, viewerDidAuthor = false, bodyText = '') => ({
+  id, bodyText, viewerDidAuthor, createdAt: iso(t), author: user(login),
 })
 const thread = (...c: ReturnType<typeof ic>[]) => ({ comments: { nodes: c } })
 const rv = (id: string, login: string, t: number, st: string, bodyText: string) => ({
@@ -25,7 +25,7 @@ test('human issue comment after my last activity shows and notifies', async () =
   expect(out.items).toHaveLength(1)
   expect(out.items[0]).toMatchObject({ key: 'c:PR1', kind: 'comment', count: 1, who: ['alice'], repo: 'app', fullRepo: 'acme/app', at: 500, dim: false, tag: null })
   expect(out.events).toEqual([
-    { key: 'c:IC1', kind: 'comment', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'alice', detail: '' },
+    { key: 'c:IC1', kind: 'comment', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'alice', detail: '', url: 'https://github.com/acme/app/pull/1', number: 1, excerpt: '' },
   ])
 })
 
@@ -72,7 +72,7 @@ test('changes requested counts; empty COMMENTED and APPROVED with body do not', 
 })
 
 test('bots hidden by default, shown band-only when includeBots', async () => {
-  const bot = { id: 'B1', viewerDidAuthor: false, createdAt: iso(10), author: { login: 'coderabbit', __typename: 'Bot' } }
+  const bot = { id: 'B1', bodyText: '', viewerDidAuthor: false, createdAt: iso(10), author: { login: 'coderabbit', __typename: 'Bot' } }
   const pr = minePr({ comments: { nodes: [bot, ic('A', 'alice', 20)] } })
   expect(comments(mine(pr), ctx()).items[0]).toMatchObject({ count: 1, who: ['alice'] })
   const out = comments(mine(pr), ctx({ cfg: { ...cfg, includeBots: true } }))
@@ -107,4 +107,22 @@ test('item keeps its first-seen time', async () => {
   }
   const out = comments(mine(minePr({ comments: { nodes: [ic('A', 'alice', 10)] } })), ctx({ prev: state({ items: [prev] }) }))
   expect(out.items[0]?.at).toBe(100)
+})
+
+test('comment events carry a 200-char whitespace-collapsed excerpt', async () => {
+  const long = `  first\n\n  line\t${'x'.repeat(300)}`
+  const pr = minePr({
+    comments: { nodes: [ic('IC1', 'alice', 10, false, long)] },
+    reviews: { nodes: [rv('R1', 'bob', 11, 'COMMENTED', 'nit\n  here'), rv('R2', 'carol', 12, 'CHANGES_REQUESTED', '')] },
+  })
+  const [a, b, c] = comments(mine(pr), ctx()).events
+  expect(a?.excerpt).toBe(`first line ${'x'.repeat(189)}`)
+  expect(a?.excerpt).toHaveLength(200)
+  expect(b?.excerpt).toBe('nit here')
+  expect(c?.excerpt).toBe('')
+})
+
+test('every comment event carries url and number', async () => {
+  const pr = minePr({ number: 7, url: 'https://github.com/acme/app/pull/7', comments: { nodes: [ic('IC1', 'alice', 10)] } })
+  expect(comments(mine(pr), ctx()).events[0]).toMatchObject({ url: 'https://github.com/acme/app/pull/7', number: 7 })
 })

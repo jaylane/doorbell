@@ -17,7 +17,9 @@ export function watermarkOf(pr: MinePr, me: string): number {
   return Math.max(0, ...times)
 }
 
-type Candidate = { id: string; createdAt: string; author: Author }
+type Candidate = { id: string; bodyText: string; createdAt: string; author: Author }
+
+const excerptOf = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(0, 200)
 
 export function comments(d: Data, ctx: Ctx): TriggerOut {
   const before = ctx.prev.items.filter((i) => i.kind === 'comment')
@@ -49,6 +51,9 @@ export function comments(d: Data, ctx: Ctx): TriggerOut {
         title: pr.title,
         who: c.author?.login ?? 'ghost',
         detail: '',
+        url: pr.url,
+        number: pr.number,
+        excerpt: excerptOf(c.bodyText),
       })
     }
     items.push({

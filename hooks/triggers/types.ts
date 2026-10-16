@@ -12,6 +12,10 @@ export type Event = {
   title: string
   who: string
   detail: string
+  url: string
+  number: number
+  /** Comment text, whitespace collapsed and cut to 200 characters; '' on other kinds. */
+  excerpt: string
 }
 export type TriggerOut = { items: Item[]; events: Event[] }
 
