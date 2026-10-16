@@ -278,6 +278,7 @@ export const register: Register = (on, options) => {
     return drawPane($, e, view, p, {
       press: (change) => press($, change),
       mode: (t, mode) => press($, (s) => setActionMode(s, t, mode)),
+      draft: (t, text) => update($, pane, (q) => ({ ...q, drafts: { ...q.drafts, [t]: text } })),
       prompt: async (t, text) => {
         const bad = unknownPlaceholders(text).length > 0
         await update($, pane, (q) => ({ ...q, drafts: bad ? { ...q.drafts, [t]: text } : { ...q.drafts, [t]: undefined } }))

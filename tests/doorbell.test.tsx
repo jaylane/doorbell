@@ -709,3 +709,18 @@ test('submitting a valid prompt saves it', async ($, on) => {
   expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).not.toContain('unknown: {prurl}')
   await ui.unmount()
 })
+
+test('a half-typed action prompt survives a redraw, then saves and clears', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  const value = async () => (await ui.find({ type: 'Input', key: 'prompt:review' }))!.props.value
+  await ui.input({ key: 'prompt:review', text: 'half {pr_', kind: 'change' })
+  await clock.advance(10_000)
+  expect(await value()).toBe('half {pr_')
+  await ui.input({ key: 'prompt:review', text: 'review {pr_url}', kind: 'submit' })
+  expect(fileSettings(w).actions.review.prompt).toBe('review {pr_url}')
+  expect(await value()).toBe('review {pr_url}')
+  await ui.unmount()
+})

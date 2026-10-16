@@ -88,6 +88,7 @@ export type PaneHandlers = {
   filter: (text: string) => Promise<unknown>
   mode: (t: Trigger, mode: ActionMode) => Promise<unknown>
   prompt: (t: Trigger, text: string) => Promise<unknown>
+  draft: (t: Trigger, text: string) => Promise<unknown>
 }
 
 const TRIGGER_LABEL: Record<Trigger, string> = { review: '👀 review requested', comment: '💬 new comment' }
@@ -129,6 +130,7 @@ export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneVi
               value={view.actions[t].prompt}
               rows={2}
               submitLabel="save"
+              onInput={(v: string) => logged(on.draft(t, v))}
               onSubmit={(v: string) => logged(on.prompt(t, v))}
             />
             {view.actions[t].problem && <Text color="yellow">{view.actions[t].problem}</Text>}
