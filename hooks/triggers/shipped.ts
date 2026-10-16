@@ -40,10 +40,10 @@ export function shipped(d: Data, aliases: Record<string, Alias>, ctx: Ctx): Out 
     if (!p) continue
     delete waiting[prId]
     const known = prev.releases[p.repo] !== undefined
-    events.push({ key: `s:${prId}`, kind: 'shipped', notify: known, prId, label: labelOf(p.repo, p.number), title: p.title, who: '', detail: tag })
+    events.push({ key: `s:${prId}`, kind: 'shipped', notify: known, prId, fullRepo: p.repo, label: labelOf(p.repo, p.number), title: p.title, who: '', detail: tag })
     if (known) {
       fresh.push({
-        key: `s:${prId}`, kind: 'shipped', prId, repo: p.repo.split('/').pop() ?? '', number: p.number,
+        key: `s:${prId}`, kind: 'shipped', prId, repo: p.repo.split('/').pop() ?? '', fullRepo: p.repo, number: p.number,
         title: p.title, url: p.url, at: ctx.now, who: [], count: 1, dim: false, tag,
       })
     }

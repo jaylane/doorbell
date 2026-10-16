@@ -23,9 +23,9 @@ const push = (login: string, t: number) => ({
 test('human issue comment after my last activity shows and notifies', async () => {
   const out = comments(mine(minePr({ comments: { nodes: [ic('IC1', 'alice', 10)] } })), ctx())
   expect(out.items).toHaveLength(1)
-  expect(out.items[0]).toMatchObject({ key: 'c:PR1', kind: 'comment', count: 1, who: ['alice'], repo: 'app', at: 500, dim: false, tag: null })
+  expect(out.items[0]).toMatchObject({ key: 'c:PR1', kind: 'comment', count: 1, who: ['alice'], repo: 'app', fullRepo: 'acme/app', at: 500, dim: false, tag: null })
   expect(out.events).toEqual([
-    { key: 'c:IC1', kind: 'comment', notify: true, prId: 'PR1', label: 'app#1', title: 'Add thing', who: 'alice', detail: '' },
+    { key: 'c:IC1', kind: 'comment', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'alice', detail: '' },
   ])
 })
 
@@ -93,7 +93,7 @@ test('several comments on one PR coalesce into one item', async () => {
 
 test('failed mine search keeps previous comment items', async () => {
   const prev: Item = {
-    key: 'c:PR1', kind: 'comment', prId: 'PR1', repo: 'app', number: 1, title: 't', url: 'u',
+    key: 'c:PR1', kind: 'comment', prId: 'PR1', repo: 'app', fullRepo: 'acme/app', number: 1, title: 't', url: 'u',
     at: 100, who: ['alice'], count: 1, dim: false, tag: null,
   }
   const out = comments(mine(), ctx({ failed: new Set(['mine']), prev: state({ items: [prev] }) }))
@@ -102,7 +102,7 @@ test('failed mine search keeps previous comment items', async () => {
 
 test('item keeps its first-seen time', async () => {
   const prev: Item = {
-    key: 'c:PR1', kind: 'comment', prId: 'PR1', repo: 'app', number: 1, title: 't', url: 'u',
+    key: 'c:PR1', kind: 'comment', prId: 'PR1', repo: 'app', fullRepo: 'acme/app', number: 1, title: 't', url: 'u',
     at: 100, who: ['alice'], count: 1, dim: false, tag: null,
   }
   const out = comments(mine(minePr({ comments: { nodes: [ic('A', 'alice', 10)] } })), ctx({ prev: state({ items: [prev] }) }))

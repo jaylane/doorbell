@@ -5,6 +5,8 @@ export type Item = {
   prId: string
   /** Name without owner, for display. */
   repo: string
+  /** owner/name. */
+  fullRepo: string
   number: number
   title: string
   url: string
@@ -104,6 +106,20 @@ export type Data = {
 
 declare module 'claude-code' {
   interface PluginState {
-    doorbell: { state: Shaped<State> }
+    doorbell: { state: Shaped<State>; settings: Shaped<DoorbellSettings>; pane: Shaped<PaneState> }
   }
+}
+
+export type RepoSetting = { tracked: boolean; kinds: Kind[] }
+export type Settings = { allRepos: boolean; defaults: Kind[]; repos: Record<string, RepoSetting> }
+// Inside `declare module 'claude-code'`, a bare `Settings` names the engine's own type.
+export type DoorbellSettings = Settings
+export type PaneState = {
+  /** null while the list loads. */
+  repos: string[] | null
+  error: string | null
+  filter: string
+  save: 'saved' | 'failed' | null
+  /** settings.json exists but does not parse. */
+  isInvalid: boolean
 }

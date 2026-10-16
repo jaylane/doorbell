@@ -1,17 +1,18 @@
 import { expect, test } from 'claude-code/testing'
 import { state } from './fixtures'
 import { segments } from '../hooks/band'
+import { DEFAULT_SETTINGS } from '../hooks/settings'
 import type { Item, State } from '../types'
 
 const NOW = 10_000_000
 const item = (over: Partial<Item>): Item => ({
-  key: 'k', kind: 'review', prId: 'P', repo: 'app', number: 1, title: 't', url: 'u',
+  key: 'k', kind: 'review', prId: 'P', repo: 'app', fullRepo: 'acme/app', number: 1, title: 't', url: 'u',
   at: 0, who: [], count: 1, dim: false, tag: null, ...over,
 })
-const text = (s: State, ghMissing = false) => segments(s, NOW, ghMissing).map((x) => x.text)
+const text = (s: State, ghMissing = false) => segments(s, NOW, ghMissing, DEFAULT_SETTINGS).map((x) => x.text)
 
 test('review item, dim for a dim item', async () => {
-  expect(segments(state({ items: [item({}), item({ dim: true })] }), NOW, false)).toEqual([
+  expect(segments(state({ items: [item({}), item({ dim: true })] }), NOW, false, DEFAULT_SETTINGS)).toEqual([
     { text: '👀 app#1', dim: false, warn: false, href: 'u' },
     { text: '👀 app#1', dim: true, warn: false, href: 'u' },
   ])
@@ -34,13 +35,13 @@ test('item segments link to the PR, and a shipped one to its release', async () 
     item({ kind: 'approved', url }),
     item({ kind: 'shipped', url, tag: 'pkg@1.0' }),
   ]
-  expect(segments(state({ items, error: 'partial' }), NOW, false).map((x) => x.href)).toEqual([
+  expect(segments(state({ items, error: 'partial' }), NOW, false, DEFAULT_SETTINGS).map((x) => x.href)).toEqual([
     url, url, url, 'https://github.com/acme/app/releases/tag/pkg%401.0', undefined,
   ])
 })
 
 test('a shipped link keeps slashes in monorepo tags and falls back to the PR for other URLs', async () => {
-  const href = (over: Partial<Item>) => segments(state({ items: [item({ kind: 'shipped', ...over })] }), NOW, false)[0]!.href
+  const href = (over: Partial<Item>) => segments(state({ items: [item({ kind: 'shipped', ...over })] }), NOW, false, DEFAULT_SETTINGS)[0]!.href
   expect(href({ url: 'https://github.com/acme/app/pull/4', tag: '@scope/pkg@1.0 rc#2' })).toBe(
     'https://github.com/acme/app/releases/tag/%40scope/pkg%401.0%20rc%232',
   )
@@ -54,11 +55,11 @@ test('status segments', async () => {
   expect(text(state({ error: 'rate' }))).toEqual(['⚠ rate limited'])
   expect(text(state({ error: 'query' }))).toEqual(['⚠ GitHub error'])
   expect(text(state({ error: 'partial' }))).toEqual(['⚠ partial'])
-  expect(segments(state({ error: 'rate' }), NOW, false)).toEqual([{ text: '⚠ rate limited', dim: false, warn: true }])
+  expect(segments(state({ error: 'rate' }), NOW, false, DEFAULT_SETTINGS)).toEqual([{ text: '⚠ rate limited', dim: false, warn: true }])
 })
 
 test('stale 4m at 240s, none at 180s or without a success', async () => {
-  expect(segments(state({ lastOkAt: NOW - 240_000 }), NOW, false)).toEqual([{ text: 'stale 4m', dim: true, warn: false }])
+  expect(segments(state({ lastOkAt: NOW - 240_000 }), NOW, false, DEFAULT_SETTINGS)).toEqual([{ text: 'stale 4m', dim: true, warn: false }])
   expect(text(state({ lastOkAt: NOW - 180_000 }))).toEqual([])
   expect(text(state({ lastOkAt: 0 }))).toEqual([])
 })
@@ -69,5 +70,22 @@ test('precedence: ghMissing beats auth, error beats stale, status is last', asyn
 })
 
 test('nothing to show yields []', async () => {
-  expect(segments(state(), NOW, false)).toEqual([])
+  expect(segments(state(), NOW, false, DEFAULT_SETTINGS)).toEqual([])
+})
+
+test('an item whose repo is untracked or whose kind is off is hidden; status segments stay', async () => {
+  const items = [
+    item({ kind: 'review', number: 1 }),
+    item({ kind: 'comment', number: 2 }),
+    item({ kind: 'review', number: 3, fullRepo: 'acme/other', repo: 'other' }),
+  ]
+  const settings = {
+    allRepos: false,
+    defaults: [],
+    repos: { 'acme/app': { tracked: true, kinds: ['review' as const] } },
+  }
+  expect(segments(state({ items, error: 'rate' }), NOW, false, settings).map((x) => x.text)).toEqual([
+    '👀 app#1',
+    '⚠ rate limited',
+  ])
 })

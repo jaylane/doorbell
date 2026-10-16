@@ -30,11 +30,15 @@ type World = {
   notify: string[]
   osascript: string[][]
   mvExit: number
+  // While set, mv waits on it, so a test can hold a write between its tmp file and the rename.
+  mvHold: Promise<unknown> | null
+  opened: string[]
+  commands: string[]
 }
 
 // The engine beneath the mod: files, processes and notifications answered from memory.
 const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean } = {}): World => {
-  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0 }
+  const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [] }
   for (const [p, text] of Object.entries(opts.files ?? {})) w.files.set(p, { text, mtimeMs: clock.now() })
   const need = (path: string) => {
     const f = w.files.get(path)
@@ -57,7 +61,7 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     const mtimeMs = w.dirs.has(e.path) ? clock.now() : need(e.path).mtimeMs
     return { value: { kind: 'file' as const, size: 0, mtimeMs, isLink: false } }
   })
-  on('process.run', ($, e) => {
+  on('process.run', async ($, e) => {
     const argv = [...e.argv]
     w.argv.push(argv)
     const [cmd, ...rest] = argv
@@ -69,6 +73,7 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     }
     if (cmd === 'rmdir') return w.dirs.delete(last), result(0)
     if (cmd === 'mv') {
+      if (w.mvHold) await w.mvHold
       if (w.mvExit) return result(w.mvExit)
       w.files.set(rest[1]!, need(rest[0]!))
       w.files.delete(rest[0]!)
@@ -87,6 +92,14 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     return { value: { isSent: true as const, channel: 'iterm2' as const } }
   })
   on('ui.log', () => ({ value: undefined }))
+  on('command.register', ($, e) => {
+    w.commands.push(`${e.name}: ${e.description}`)
+    return { value: { command: e.name } }
+  })
+  on('ui.open', ($, e) => {
+    w.opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
   on('ui.invalidate', () => ({ value: undefined }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
@@ -109,6 +122,7 @@ const reviewItem: Item = {
   kind: 'review',
   prId: 'PR9',
   repo: 'web',
+  fullRepo: 'acme/web',
   number: 9,
   title: 'Fix it',
   url: 'https://github.com/acme/web/pull/9',
@@ -338,4 +352,190 @@ test('taking over the lease reloads the file, so the new leader does not re-noti
   await clock.advance(8_000)
   expect(graphqlCalls(w)).toBe(1)
   expect(w.notify).toHaveLength(0)
+})
+
+const PANE = {
+  plugin: 'doorbell',
+  component: 'Pane',
+  surface: 'terminal',
+  requestId: 'doorbell-settings',
+  props: {
+    title: 'Doorbell settings',
+    isFocused: true,
+    bodyColumns: 100,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 30 },
+    view: {},
+  },
+} as const
+
+const repoList = (...names: string[]) =>
+  JSON.stringify({
+    data: {
+      viewer: {
+        repositories: {
+          nodes: names.map((nameWithOwner) => ({ nameWithOwner, isArchived: false })),
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  })
+
+// A follower with the review item for acme/web already on file, so nothing polls.
+const followerFiles = (extra: Record<string, string> = {}) => ({
+  [`${DIR}/lease.json`]: JSON.stringify({ sessionId: 'S2', expiresAt: T0 + 3_600_000 }),
+  [`${DIR}/state.json`]: JSON.stringify(state({ items: [reviewItem], lastOkAt: T0, bootstrapped: true })),
+  ...extra,
+})
+const fileSettings = (w: World) => JSON.parse(w.files.get(`${DIR}/settings.json`)!.text)
+const openPane = ($: Engine) =>
+  $.command.run({ command: 'doorbell', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
+const paneTexts = async ($: Engine) => {
+  const ui = await $.ui.mount(PANE)
+  const texts = (await ui.findAll({ type: 'Text' })).map((t) => t.text)
+  await ui.unmount()
+  return texts
+}
+
+test('/doorbell opens the settings pane and lists repos from gh', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock)
+  w.gh.push(repoList('acme/app', 'acme/lib'))
+  await $.session.start(START)
+  expect(await openPane($)).toMatchObject({ text: 'Doorbell settings opened.' })
+  await clock.advance(0)
+  expect(w.opened).toEqual(['doorbell-settings'])
+  expect(w.commands).toEqual(['doorbell: Choose which repos and alerts Doorbell watches'])
+  const ui = await $.ui.mount(PANE)
+  const texts = async () => (await ui.findAll({ type: 'Text' })).map((t) => t.text)
+  expect(await texts()).toContain('acme/app')
+  expect(await texts()).toContain('acme/lib')
+  expect(await texts()).not.toContain('loading repos…')
+  await ui.input({ key: 'filter', text: 'LIB', kind: 'change' })
+  expect(await texts()).not.toContain('acme/app')
+  expect(await texts()).toContain('acme/lib')
+  await ui.unmount()
+})
+
+test('pressing a kind box writes settings.json and the band hides that kind', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  expect(await bandTexts($)).toEqual(['👀 web#9'])
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'kind:acme/web:review' })
+  expect(fileSettings(w).repos['acme/web']).toEqual({ tracked: true, kinds: ['comment', 'approved', 'shipped'] })
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).toContain('saved')
+  await ui.unmount()
+  expect(await bandTexts($)).toEqual([])
+})
+
+test('the all-repos and column boxes toggle every repo at once', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const kept = { allRepos: true, defaults: ['review', 'comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: ['review'] } } }
+  const w = world(on, clock, { files: followerFiles({ [`${DIR}/settings.json`]: JSON.stringify(kept) }) })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'col:review' })
+  expect(fileSettings(w)).toEqual({ allRepos: true, defaults: ['comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: [] } } })
+  await ui.press({ key: 'all-repos' })
+  expect(fileSettings(w).allRepos).toBe(false)
+  await ui.press({ key: 'col:all' })
+  expect(fileSettings(w).repos['acme/api'].kinds).toEqual(['review', 'comment', 'approved', 'shipped'])
+  await ui.unmount()
+})
+
+test("another session's settings change reaches this band at the next follower check", async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  expect(await bandTexts($)).toEqual(['👀 web#9'])
+  await clock.advance(5_000)
+  const off = { allRepos: true, defaults: [], repos: {} }
+  w.files.set(`${DIR}/settings.json`, { text: JSON.stringify(off), mtimeMs: clock.now() })
+  await clock.advance(10_000)
+  expect(await bandTexts($)).toEqual([])
+})
+
+test('an unreadable settings.json shows the notice and keeps alerts on', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  world(on, clock, { files: followerFiles({ [`${DIR}/settings.json`]: '{not json' }) })
+  await $.session.start(START)
+  expect(await paneTexts($)).toContain('settings file unreadable, using defaults')
+  expect(await bandTexts($)).toEqual(['👀 web#9'])
+})
+
+test('a failed repo list still shows repos from settings and band items', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const kept = { allRepos: true, defaults: ['review'], repos: { 'acme/lib': { tracked: false, kinds: [] } } }
+  const w = world(on, clock, { files: followerFiles({ [`${DIR}/settings.json`]: JSON.stringify(kept) }) })
+  w.gh.push('')
+  await $.session.start(START)
+  await openPane($)
+  await clock.advance(0)
+  const ui = await $.ui.mount(PANE)
+  const texts = (await ui.findAll({ type: 'Text' })).map((t) => t.text)
+  expect(texts).toContain("couldn't load repos: offline")
+  expect(texts).toContain('acme/lib')
+  expect(texts).toContain('acme/web')
+  await ui.press({ key: 'track:acme/lib' })
+  expect(fileSettings(w).repos['acme/lib']).toEqual({ tracked: true, kinds: ['review'] })
+  await ui.unmount()
+})
+
+test('two presses before a redraw both land in the atom and the file', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const kept = { allRepos: true, defaults: ['review', 'comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: ['comment'] } } }
+  const w = world(on, clock, { files: followerFiles({ [`${DIR}/settings.json`]: JSON.stringify(kept) }) })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await Promise.all([ui.press({ key: 'kind:acme/web:review' }), ui.press({ key: 'kind:acme/api:review' })])
+  expect(fileSettings(w).repos).toEqual({
+    'acme/api': { tracked: true, kinds: ['review', 'comment'] },
+    'acme/web': { tracked: true, kinds: ['comment', 'approved', 'shipped'] },
+  })
+  const texts = (await ui.findAll({ type: 'Text' })).map((t) => t.text)
+  expect(texts).toContain('saved')
+  expect(texts).not.toContain('⚠ not saved')
+  await ui.unmount()
+  expect(await bandTexts($)).toEqual([])
+})
+
+test('a reload between two presses never drops the queued one', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const kept = { allRepos: true, defaults: ['review', 'comment', 'approved', 'shipped'], repos: { 'acme/api': { tracked: true, kinds: ['comment'] } } }
+  const w = world(on, clock, { files: followerFiles({ [`${DIR}/settings.json`]: JSON.stringify(kept) }) })
+  await $.session.start(START)
+  await clock.advance(5_000)
+  let releaseA = () => {}
+  let releaseB = () => {}
+  w.mvHold = new Promise<void>((r) => (releaseA = r))
+  const ui = await $.ui.mount(PANE)
+  const a = ui.press({ key: 'kind:acme/api:review' })
+  await clock.advance(0)
+  const b = ui.press({ key: 'kind:acme/web:review' })
+  await clock.advance(0)
+  w.mvHold = new Promise<void>((r) => (releaseB = r))
+  releaseA()
+  await clock.advance(5_000)
+  releaseB()
+  await Promise.all([a, b])
+  await clock.advance(10_000)
+  await ui.unmount()
+  expect(fileSettings(w).repos['acme/web']).toEqual({ tracked: true, kinds: ['comment', 'approved', 'shipped'] })
+  expect(await bandTexts($)).toEqual([])
+})
+
+test('a failed save reverts to the file at the next follower check', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  w.mvExit = 1
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'kind:acme/web:review' })
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).toContain('⚠ not saved')
+  await ui.unmount()
+  expect(await bandTexts($)).toEqual([])
+  await clock.advance(10_000)
+  expect(await bandTexts($)).toEqual(['👀 web#9'])
 })

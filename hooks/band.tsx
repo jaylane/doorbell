@@ -1,8 +1,9 @@
-import type { Item, Kind, State } from '../types'
+import type { Item, Kind, Settings, State } from '../types'
+import { allows } from './settings'
 
 export type Segment = { text: string; dim: boolean; warn: boolean; href?: string }
 
-const ICON: Record<Kind, string> = { review: '👀', comment: '💬', approved: '✅', shipped: '🚀' }
+export const ICON: Record<Kind, string> = { review: '👀', comment: '💬', approved: '✅', shipped: '🚀' }
 const STALE_MS = 180_000
 
 const STATUS = {
@@ -26,8 +27,8 @@ const status = (s: State, now: number, ghMissing: boolean): Segment | null => {
   return null
 }
 
-export const segments = (s: State, now: number, ghMissing: boolean): Segment[] => {
-  const items = s.items.map((i): Segment => {
+export const segments = (s: State, now: number, ghMissing: boolean, settings: Settings): Segment[] => {
+  const items = s.items.filter((i) => allows(settings, i.fullRepo, i.kind)).map((i): Segment => {
     const label = `${ICON[i.kind]} ${i.repo}#${i.number}`
     const extra = i.kind === 'comment' ? ` ×${i.count}` : i.kind === 'shipped' ? ` ${i.tag}` : ''
     return { text: label + extra, dim: i.dim, warn: false, href: hrefOf(i) }

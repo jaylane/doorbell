@@ -54,7 +54,7 @@ test('release alias skips drafts and prereleases', async () => {
 
 test('BEHIND marks shipped and notifies', async () => {
   const out = run('BEHIND')
-  expect(out.items[0]).toMatchObject({ tag: 'v2', key: 's:PR9', kind: 'shipped', repo: 'app', at: 1000 })
+  expect(out.items[0]).toMatchObject({ tag: 'v2', key: 's:PR9', kind: 'shipped', repo: 'app', fullRepo: 'acme/app', at: 1000 })
   expect(out.events[0]).toMatchObject({ key: 's:PR9', notify: true, detail: 'v2', label: 'app#9' })
   expect(out.pendingShip.PR9).toBeUndefined()
   expect(out.releases[REPO]).toBe('v2')
@@ -99,7 +99,7 @@ test('giveUpCompares records every compared repo\'s tag', async () => {
 })
 
 test('shipped item fades after fadeMinutes', async () => {
-  const it: Item = { key: 's:PR8', kind: 'shipped', prId: 'PR8', repo: 'app', number: 8, title: 't', url: 'u', at: 1000, who: [], count: 1, dim: false, tag: 'v1' }
+  const it: Item = { key: 's:PR8', kind: 'shipped', prId: 'PR8', repo: 'app', fullRepo: 'acme/app', number: 8, title: 't', url: 'u', at: 1000, who: [], count: 1, dim: false, tag: 'v1' }
   const prev = state({ items: [it] })
   expect(shipped(data(), {}, ctx({ prev, now: 1000 + 300_000 - 1, failed: new Set(['merged']) })).items).toEqual([it])
   expect(shipped(data(), {}, ctx({ prev, now: 1000 + 300_000 })).items).toEqual([])

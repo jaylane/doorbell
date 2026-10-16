@@ -9,7 +9,7 @@ const cfg = { pollSeconds: 60, fadeMinutes: 5, includeBots: false, notify: true 
 const ctx = (over: Partial<Ctx> = {}): Ctx => ({ now: 500, me: 'me', cfg, prev: state(), failed: new Set(), ...over })
 const rr = (...nodes: ReturnType<typeof rrPr>[]) => data({ rr: { issueCount: nodes.length, nodes } })
 const item = (over: Partial<Item> = {}): Item => ({
-  key: 'rr:PR1:100', kind: 'review', prId: 'PR1', repo: 'app', number: 1, title: 'Add thing',
+  key: 'rr:PR1:100', kind: 'review', prId: 'PR1', repo: 'app', fullRepo: 'acme/app', number: 1, title: 'Add thing',
   url: 'u', at: 100, who: ['alice'], count: 1, dim: false, tag: null, ...over,
 })
 const team = { reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'Team', slug: 'core' } }] } }
@@ -17,9 +17,9 @@ const team = { reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'Tea
 test('direct request on a ready PR notifies', async () => {
   const out = reviews(rr(rrPr()), ctx())
   expect(out.items).toHaveLength(1)
-  expect(out.items[0]).toMatchObject({ kind: 'review', dim: false, repo: 'app', who: ['alice'], at: 500 })
+  expect(out.items[0]).toMatchObject({ kind: 'review', dim: false, repo: 'app', fullRepo: 'acme/app', who: ['alice'], at: 500 })
   expect(out.events).toEqual([
-    { key: 'rr:PR1:500', kind: 'review', notify: true, prId: 'PR1', label: 'app#1', title: 'Add thing', who: 'alice', detail: '' },
+    { key: 'rr:PR1:500', kind: 'review', notify: true, prId: 'PR1', fullRepo: 'acme/app', label: 'app#1', title: 'Add thing', who: 'alice', detail: '' },
   ])
 })
 

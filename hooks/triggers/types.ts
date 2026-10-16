@@ -6,6 +6,7 @@ export type Event = {
   kind: Kind
   notify: boolean
   prId: string
+  fullRepo: string
   /** repo#n */
   label: string
   title: string
