@@ -135,6 +135,8 @@ export type PaneState = {
   repos: string[] | null
   error: string | null
   filter: string
+  /** Prompt text rejected for unknown placeholders, kept so it can be fixed. */
+  drafts: Partial<Record<Trigger, string>>
   save: 'saved' | 'failed' | null
   /** settings.json exists but does not parse. */
   isInvalid: boolean

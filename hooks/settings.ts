@@ -12,7 +12,7 @@ export const DEFAULT_ACTIONS: Record<Trigger, Action> = Object.freeze({
 export const DEFAULT_SETTINGS: Settings = { allRepos: true, defaults: [...KINDS], repos: {}, actions: DEFAULT_ACTIONS }
 
 const MODES: readonly ActionMode[] = ['off', 'ask', 'session', 'background']
-const TRIGGERS: readonly Trigger[] = ['review', 'comment']
+export const TRIGGERS: readonly Trigger[] = ['review', 'comment']
 
 // A mode with nothing to run would fire an empty prompt, so it counts as off.
 export function effectiveMode(a: Action): ActionMode {

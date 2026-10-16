@@ -676,3 +676,36 @@ test('a run that rejects never blocks the next poll\'s run', async ($, on) => {
   expect(graphqlCalls(w)).toBe(3)
   expect(w.ran).toEqual(['command:review https://github.com/acme/app/pull/2', 'command:review https://github.com/acme/app/pull/3'])
 })
+
+test('selecting auto · session saves mode session', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.select({ key: 'mode:review', value: 'session' })
+  expect(fileSettings(w).actions.review.mode).toBe('session')
+  await ui.unmount()
+})
+
+test('submitting a prompt with {prurl} does not save and shows unknown: {prurl}', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.input({ key: 'prompt:comment', text: 'look at {prurl}', kind: 'submit' })
+  expect(w.files.has(`${DIR}/settings.json`)).toBe(false)
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).toContain('unknown: {prurl}')
+  await ui.unmount()
+})
+
+test('submitting a valid prompt saves it', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { files: followerFiles() })
+  await $.session.start(START)
+  const ui = await $.ui.mount(PANE)
+  await ui.input({ key: 'prompt:comment', text: 'look at {prurl}', kind: 'submit' })
+  await ui.input({ key: 'prompt:comment', text: 'review {pr_url}', kind: 'submit' })
+  expect(fileSettings(w).actions.comment.prompt).toBe('review {pr_url}')
+  expect((await ui.findAll({ type: 'Text' })).map((t) => t.text)).not.toContain('unknown: {prurl}')
+  await ui.unmount()
+})

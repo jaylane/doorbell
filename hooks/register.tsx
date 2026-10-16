@@ -14,7 +14,8 @@ import { reduce } from './reduce'
 import { listRepos } from './repos'
 import { checkAgents, runAction, runSession } from './run'
 import { shouldPoll } from './schedule'
-import { DEFAULT_SETTINGS, readSettings, settingsMtime, writeSettings } from './settings'
+import { DEFAULT_SETTINGS, readSettings, setActionMode, setActionPrompt, settingsMtime, writeSettings } from './settings'
+import { unknownPlaceholders } from './template'
 import { cacheDir, EMPTY, readState, stateMtime, writeState } from './store'
 import { giveUpCompares } from './triggers/shipped'
 
@@ -23,8 +24,8 @@ import { giveUpCompares } from './triggers/shipped'
 // undefined in the triggers.
 const state = atom({ plugin: 'doorbell', key: 'state' } as const, EMPTY, { shape: 'v4' })
 const settings = atom({ plugin: 'doorbell', key: 'settings' } as const, DEFAULT_SETTINGS, { shape: 'v1' })
-const CLOSED: PaneState = { repos: null, error: null, filter: '', save: null, isInvalid: false }
-const pane = atom({ plugin: 'doorbell', key: 'pane' } as const, CLOSED, { shape: 'v1' })
+const CLOSED: PaneState = { repos: null, error: null, filter: '', drafts: {}, save: null, isInvalid: false }
+const pane = atom({ plugin: 'doorbell', key: 'pane' } as const, CLOSED, { shape: 'v2' })
 const PANE = 'doorbell-settings'
 
 let sessionId = ''
@@ -265,7 +266,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'doorbell' }, async ($) => {
-    await update($, pane, (p) => ({ ...p, repos: null, error: ghMissing ? 'gh not found' : null, filter: '', save: null }))
+    await update($, pane, (p) => ({ ...p, repos: null, error: ghMissing ? 'gh not found' : null, filter: '', drafts: {}, save: null }))
     await $.ui.open({ id: PANE, title: 'Doorbell settings', focus: true, closeOnEscape: true })
     if (!ghMissing) void loadRepos($).catch((err) => $.ui.log(`doorbell: ${String(err)}`))
     return { text: 'Doorbell settings opened.' }
@@ -273,9 +274,15 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const p = await read($, pane)
-    const view = paneView(await read($, settings), p.repos, p.error, (await read($, state)).items, p.filter)
+    const view = paneView(await read($, settings), p.repos, p.error, (await read($, state)).items, p.filter, p.drafts)
     return drawPane($, e, view, p, {
       press: (change) => press($, change),
+      mode: (t, mode) => press($, (s) => setActionMode(s, t, mode)),
+      prompt: async (t, text) => {
+        const bad = unknownPlaceholders(text).length > 0
+        await update($, pane, (q) => ({ ...q, drafts: bad ? { ...q.drafts, [t]: text } : { ...q.drafts, [t]: undefined } }))
+        if (!bad) await press($, (s) => setActionPrompt(s, t, text))
+      },
       filter: (text) => update($, pane, (q) => ({ ...q, filter: text })),
     })
   })
