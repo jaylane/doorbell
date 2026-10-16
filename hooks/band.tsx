@@ -1,6 +1,6 @@
-import type { Kind, State } from '../types'
+import type { Item, Kind, State } from '../types'
 
-export type Segment = { text: string; dim: boolean; warn: boolean }
+export type Segment = { text: string; dim: boolean; warn: boolean; href?: string }
 
 const ICON: Record<Kind, string> = { review: '👀', comment: '💬', approved: '✅', shipped: '🚀' }
 const STALE_MS = 180_000
@@ -12,6 +12,10 @@ const STATUS = {
   query: '⚠ GitHub error',
   partial: '⚠ partial',
 } as const
+
+// A ship is about the release, so it links there; the PR URL already names owner and repo.
+const hrefOf = (i: Item): string =>
+  i.kind === 'shipped' && i.tag ? i.url.replace(/\/pull\/\d+$/, `/releases/tag/${encodeURIComponent(i.tag)}`) : i.url
 
 const status = (s: State, now: number, ghMissing: boolean): Segment | null => {
   if (ghMissing) return { text: '⚠ gh not found', dim: false, warn: true }
@@ -26,7 +30,7 @@ export const segments = (s: State, now: number, ghMissing: boolean): Segment[] =
   const items = s.items.map((i): Segment => {
     const label = `${ICON[i.kind]} ${i.repo}#${i.number}`
     const extra = i.kind === 'comment' ? ` ×${i.count}` : i.kind === 'shipped' ? ` ${i.tag}` : ''
-    return { text: label + extra, dim: i.dim, warn: false }
+    return { text: label + extra, dim: i.dim, warn: false, href: hrefOf(i) }
   })
   const st = status(s, now, ghMissing)
   return st ? [...items, st] : items

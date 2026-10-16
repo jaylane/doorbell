@@ -141,14 +141,17 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
     const segs = segments(await read($, state), await $.clock.now(), ghMissing)
     if (!segs.length) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Link, Text } = $.ui.resolve(e)
     return (
       <Box flexWrap="wrap" gap={2}>
-        {segs.map((seg, i) => (
-          <Text key={String(i)} dimColor={seg.dim} {...(seg.warn ? { color: 'yellow' } : {})}>
-            {seg.text}
-          </Text>
-        ))}
+        {segs.map((seg, i) => {
+          const text = (
+            <Text key={String(i)} dimColor={seg.dim} {...(seg.warn ? { color: 'yellow' } : {})}>
+              {seg.text}
+            </Text>
+          )
+          return seg.href ? <Link key={String(i)} href={seg.href}>{text}</Link> : text
+        })}
       </Box>
     )
   })

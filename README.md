@@ -18,7 +18,7 @@ Answer `y` to add the marketplace, then pick a scope. It uses your existing `gh 
 
 ## The band
 
-Segments appear in this order.
+Segments appear in this order. Each item is a link to its pull request, or for 🚀 to its release page; cmd+click opens it in most terminals (iTerm2, Ghostty, WezTerm, kitty, VS Code). Terminal.app has no hyperlink support and prints the URL after the item instead.
 
 | Segment | Meaning |
 |---|---|
