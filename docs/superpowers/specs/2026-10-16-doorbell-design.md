@@ -209,7 +209,7 @@ The band yields to a survey (`hasSurvey`).
 
 | Condition | Detection | Action |
 |---|---|---|
-| Rate limit | HTTP 403 or 429, or "rate limit" in the body | Wait `Retry-After`, else until `X-RateLimit-Reset`, else 60 s doubling to 15 min |
+| Rate limit | HTTP 403 or 429, or "rate limit" in an error message when there is no `data` | Wait `Retry-After`, else until `X-RateLimit-Reset`, else 60 s doubling to 15 min |
 | Budget exhausted | `X-RateLimit-Remaining: 0` | Wait until `X-RateLimit-Reset` |
 | Offline | No status line, a 5xx, or `gh` still running at 30 s | 15 s, 30 s, 60 s, then every 5 min |
 | Query error | HTTP 200 with `errors` and no `data` | 60 s doubling to 15 min, and drop that poll's compares |
