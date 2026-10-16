@@ -71,9 +71,12 @@ test('takes over an unparsable lease', async () => {
 })
 
 test('two sessions racing: exactly one wins', async () => {
-  const { io } = fakeIo()
+  const { io, now, argv } = fakeIo()
+  now.ms = NOW
   const r = await Promise.all([tryLead(io, D, 'S1', NOW), tryLead(io, D, 'S2', NOW)])
   expect(r.filter(Boolean)).toHaveLength(1)
+  // A stale-lock steal would add a second rmdir.
+  expect(argv.filter((a) => a[0] === 'rmdir')).toHaveLength(1)
 })
 
 test('a loser leaves a fresh lock alone', async () => {
@@ -92,9 +95,18 @@ test('a stale lock older than 5s is removed and the lease taken', async () => {
 
 test('release writes expiresAt 0 only when it holds the lease', async () => {
   const mine = fakeIo({ files: { [`${D}/lease.json`]: JSON.stringify({ sessionId: 'S1', expiresAt: NOW }) } })
-  await release(mine.io, D, 'S1')
+  await release(mine.io, D, 'S1', NOW)
   expect(lease(mine.files)).toEqual({ sessionId: 'S1', expiresAt: 0 })
   const theirs = fakeIo({ files: { [`${D}/lease.json`]: JSON.stringify({ sessionId: 'S2', expiresAt: NOW }) } })
-  await release(theirs.io, D, 'S1')
+  await release(theirs.io, D, 'S1', NOW)
   expect(lease(theirs.files)).toEqual({ sessionId: 'S2', expiresAt: NOW })
+})
+
+test('release leaves lease and a fresh foreign lock untouched', async () => {
+  const held = JSON.stringify({ sessionId: 'S1', expiresAt: NOW })
+  const { io, files } = fakeIo({ files: { [`${D}/lease.json`]: held } })
+  files.set(`${D}/lease.lock/`, { text: '', mtimeMs: NOW })
+  await release(io, D, 'S1', NOW)
+  expect(files.get(`${D}/lease.json`)!.text).toBe(held)
+  expect(files.has(`${D}/lease.lock/`)).toBe(true)
 })

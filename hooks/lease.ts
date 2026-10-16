@@ -49,8 +49,8 @@ export const tryLead = async (io: Io, dir: string, sessionId: string, now: numbe
     return true
   })) ?? false
 
-export const release = async (io: Io, dir: string, sessionId: string): Promise<void> => {
-  await withLock(io, dir, Date.now(), async () => {
+export const release = async (io: Io, dir: string, sessionId: string, now: number): Promise<void> => {
+  await withLock(io, dir, now, async () => {
     if ((await readLease(io, dir))?.sessionId !== sessionId) return
     await io.fs.write(`${dir}/lease.json`, JSON.stringify({ sessionId, expiresAt: 0 }))
   })
