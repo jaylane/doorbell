@@ -331,8 +331,11 @@ export const register: Register = (on, options) => {
     const shown = { ...s, asks: s.asks.filter((a) => !handled.includes(a.id)) }
     const segs = segments(shown, await $.clock.now(), ghMissing, await read($, settings), actionFailed)
     if (!segs.length) return next(e)
+    // Other mods share this slot: draw theirs below ours instead of replacing it.
+    // next(e) rejects only when nothing answers beneath (the test harness): the band still draws.
+    const below = await next(e).catch(() => undefined)
     const { Box, Button, Link, Text } = $.ui.resolve(e)
-    return (
+    const mine = (
       <Box flexWrap="wrap" gap={2}>
         {segs.flatMap((seg, i) => {
           const text = (
@@ -347,5 +350,6 @@ export const register: Register = (on, options) => {
         })}
       </Box>
     )
+    return below ? <Box flexDirection="column">{mine}{below}</Box> : mine
   })
 }
