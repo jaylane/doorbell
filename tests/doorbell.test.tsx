@@ -44,7 +44,7 @@ type World = {
 }
 
 // The engine beneath the mod: files, processes and notifications answered from memory.
-const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean } = {}): World => {
+const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>; noGh?: boolean; below?: string } = {}): World => {
   const w: World = { files: new Map(), dirs: new Set(), gh: [], argv: [], notify: [], osascript: [], mvExit: 0, mvHold: null, opened: [], commands: [], logs: [], invalidateThrows: false, ran: [], slashCommands: ['review'] }
   for (const [p, text] of Object.entries(opts.files ?? {})) w.files.set(p, { text, mtimeMs: clock.now() })
   const need = (path: string) => {
@@ -130,10 +130,10 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
-  // What the host draws when the band yields: an empty row.
+  // What the host draws beneath the band: an empty row, or another mod sharing the slot.
   on('ui.render', ($, e) => {
-    const { Box } = $.ui.resolve(e)
-    return <Box />
+    const { Box, Text } = $.ui.resolve(e)
+    return opts.below ? <Text>{opts.below}</Text> : <Box />
   })
   return w
 }
@@ -186,6 +186,15 @@ test('leader polls, writes state and draws the band', async ($, on) => {
   expect(graphqlCalls(w)).toBe(1)
   expect(fileState(w).items.map((i) => i.number)).toEqual([1])
   expect(await bandTexts($)).toEqual(['👀 app#1'])
+})
+
+test('another mod drawing above the prompt shows below the band', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const w = world(on, clock, { below: 'other band' })
+  w.gh.push(rr(rrPr()))
+  await $.session.start(START)
+  await clock.advance(20_000)
+  expect(await bandTexts($)).toEqual(['👀 app#1', 'other band'])
 })
 
 test('band items are links to their GitHub page', async ($, on) => {
