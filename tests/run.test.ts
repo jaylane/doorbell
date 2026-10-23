@@ -1,7 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import type { EngineInterface } from 'claude-code'
 
-import { checkAgents, runAction, runSession } from '../hooks/run'
+import { checkAgents, runAction, runSession, type Engine } from '../hooks/run'
 import type { Run } from '../types'
 
 type Status = 'running' | 'idle' | 'completed' | 'failed' | 'killed'
@@ -23,7 +22,7 @@ const fake = (opts: { commands?: string[]; spawn?: { agentId?: string; deny?: st
     },
     ui: { notify: async (text: string) => (notes.push(text), { isSent: true as const, channel: 'iterm2' }) },
     process: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
-  } as unknown as EngineInterface
+  } as unknown as Engine
   return { $, calls, notes, agents }
 }
 const run = (over: Partial<Run> = {}): Run => ({

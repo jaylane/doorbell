@@ -12,7 +12,7 @@ import { drawPane, paneView } from './pane'
 import { buildQuery } from './query'
 import { reduce } from './reduce'
 import { listRepos } from './repos'
-import { checkAgents, runAction, runSession } from './run'
+import { checkAgents, runAction, runSession, type Engine } from './run'
 import { shouldPoll } from './schedule'
 import { DEFAULT_SETTINGS, readSettings, setActionMode, setActionPrompt, settingsMtime, writeSettings } from './settings'
 import { unknownPlaceholders } from './template'
@@ -54,6 +54,29 @@ async function set($: EngineInterface, s: State) {
   await update($, state, () => s)
 }
 
+// The engine follows $ only into functions declared in this file, so imported helpers get these adapters.
+function io($: EngineInterface): Engine {
+  return {
+    fs: {
+      read: (path) => $.fs.read(path),
+      write: (path, text) => $.fs.write(path, text),
+      exists: (path) => $.fs.exists(path),
+      stat: (path) => $.fs.stat(path),
+    },
+    process: { run: (argv, init) => $.process.run(argv, init) },
+    // This engine has no system notification call, so a toast shows in the session and send's osascript fallback reaches the desktop.
+    ui: {
+      notify: async (text) => {
+        $.ui.toast(text)
+        return { isSent: false, reason: 'no-channel' }
+      },
+    },
+    prompt: { submit: (input) => $.prompt.submit(input) },
+    command: { list: () => $.command.list(), run: (input) => $.command.run(input) },
+    agent: { spawn: (input) => $.agent.spawn(input), list: () => $.agent.list() },
+  }
+}
+
 // A pathless error cannot say which compare broke the query, so they get one retry before all are given up.
 const dropCompares = (s: State, paths: string[], aliases: Record<string, Alias>): Partial<State> => {
   const compares = Object.entries(aliases).filter(([, a]) => a.kind === 'compare')
@@ -83,11 +106,11 @@ async function poll($: EngineInterface, s: State, now: number) {
   inFlight = true
   try {
     const built = buildQuery(s, now)
-    const { state: next, notes, runs } = outcome(s, await runGh($, gh!, built), built, now, await read($, settings))
+    const { state: next, notes, runs } = outcome(s, await runGh(io($), gh!, built), built, now, await read($, settings))
     try {
-      await writeState($, dir, sessionId, next)
+      await writeState(io($), dir, sessionId, next)
       // The leader holds what it wrote; reloading it later would drop an ask a failed run put back in the atom.
-      lastMtime = await stateMtime($, dir)
+      lastMtime = await stateMtime(io($), dir)
     } catch (err) {
       // The old state stays so the next poll redoes the unsent notes; the attempt is kept so it waits its turn.
       $.ui.log(`doorbell: ${String(err)}`)
@@ -98,11 +121,11 @@ async function poll($: EngineInterface, s: State, now: number) {
     // An id stays while the ask is in either state, so a session whose state is one poll behind still hides it.
     const referenced = new Set([...s.asks, ...next.asks].map((a) => a.id))
     if (handled.some((id) => !referenced.has(id))) {
-      const turn = marking.then(() => pruneHandled($, dir, sessionId, (id) => referenced.has(id)))
+      const turn = marking.then(() => pruneHandled(io($), dir, sessionId, (id) => referenced.has(id)))
       marking = turn.catch(() => {})
       await turn.then(() => (lastHandledMtime = undefined)).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
     }
-    if (cfg.notify) await send($, notes)
+    if (cfg.notify) await send(io($), notes)
     // A run waits for the session to go idle, which must not hold up the next poll.
     if (runs.length) acting = acting.then(() => perform($, runs)).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
   } finally {
@@ -115,7 +138,7 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 async function perform($: EngineInterface, runs: Run[]) {
   for (const run of runs) {
     try {
-      await runAction($, run, cfg.notify, await $.clock.now())
+      await runAction(io($), run, cfg.notify, await $.clock.now())
       actionFailed = false
     } catch (err) {
       $.ui.log(`doorbell: ${reason(err)}`)
@@ -130,10 +153,10 @@ async function perform($: EngineInterface, runs: Run[]) {
 }
 
 async function reloadHandled($: EngineInterface) {
-  const mtime = await handledMtime($, dir)
+  const mtime = await handledMtime(io($), dir)
   if (mtime === lastHandledMtime) return
   lastHandledMtime = mtime
-  handled = await readHandled($, dir)
+  handled = await readHandled(io($), dir)
 }
 
 // handled.json shares one tmp file per session, so its writes queue like settings writes.
@@ -143,13 +166,13 @@ async function runAsk($: EngineInterface, id: string) {
   pressing.add(id)
   try {
     try {
-      await runSession($, ask.text)
+      await runSession(io($), ask.text)
     } catch (err) {
       actionFailed = true
       throw err
     }
     actionFailed = false
-    const turn = marking.then(() => addHandled($, dir, sessionId, id))
+    const turn = marking.then(() => addHandled(io($), dir, sessionId, id))
     marking = turn.catch(() => {})
     await turn
     lastHandledMtime = undefined
@@ -162,9 +185,9 @@ async function runAsk($: EngineInterface, id: string) {
 
 async function reloadSettings($: EngineInterface) {
   if (pendingWrites) return
-  const mtime = await settingsMtime($, dir)
+  const mtime = await settingsMtime(io($), dir)
   if (mtime === lastSettingsMtime) return
-  const r = await readSettings($, dir)
+  const r = await readSettings(io($), dir)
   // A press may land during the read; leaving the mtime unrecorded retries next tick.
   if (pendingWrites) return
   lastSettingsMtime = mtime
@@ -185,7 +208,7 @@ async function press($: EngineInterface, change: (s: Settings) => Settings) {
 async function saveTurn($: EngineInterface) {
   let save: PaneState['save'] = 'saved'
   try {
-    await writeSettings($, dir, sessionId, await read($, settings))
+    await writeSettings(io($), dir, sessionId, await read($, settings))
   } catch (err) {
     $.ui.log(`doorbell: ${String(err)}`)
     save = 'failed'
@@ -199,7 +222,7 @@ async function saveTurn($: EngineInterface) {
 // A slow list from an earlier open must not overwrite the one a reopen started.
 async function loadRepos($: EngineInterface) {
   const open = ++opens
-  const { repos, error } = await listRepos($, gh!)
+  const { repos, error } = await listRepos(io($), gh!)
   if (open !== opens) return
   await update($, pane, (p) => ({ ...p, repos, error }))
 }
@@ -211,12 +234,12 @@ async function heartbeat($: EngineInterface) {
   await reloadHandled($)
   // A failed agent list must not stop this beat from renewing the lease.
   const now = await $.clock.now()
-  await checkAgents($, cfg.notify, now).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
-  const won = await tryLead($, dir, sessionId, now)
+  await checkAgents(io($), cfg.notify, now).catch((err) => $.ui.log(`doorbell: ${reason(err)}`))
+  const won = await tryLead(io($), dir, sessionId, now)
   if (won) {
     // The old leader may have written since this session last refreshed; polling from older seen keys would re-notify.
     if (!leading) {
-      const file = await readState($, dir)
+      const file = await readState(io($), dir)
       if (file) await set($, file)
     }
     const s = await read($, state)
@@ -229,10 +252,10 @@ async function heartbeat($: EngineInterface) {
 async function followerRefresh($: EngineInterface) {
   await reloadSettings($)
   await reloadHandled($)
-  const mtime = await stateMtime($, dir)
+  const mtime = await stateMtime(io($), dir)
   if (mtime !== lastMtime) {
     lastMtime = mtime
-    const s = await readState($, dir)
+    const s = await readState(io($), dir)
     if (s) await set($, s)
   }
   // Redraw even without a new file, so the stale minutes keep counting.
@@ -258,11 +281,11 @@ export const register: Register = (on, options) => {
     actionFailed = false
     sessionId = await $.session.id()
     dir = cacheDir((await $.env.get('HOME')) ?? (await $.session.cwd()))
-    await ensureDir($, dir)
-    const s = await readState($, dir)
+    await ensureDir(io($), dir)
+    const s = await readState(io($), dir)
     if (s) await set($, s)
     // gh is known before /doorbell can run, so the pane never reads it unset.
-    gh = await findGh($)
+    gh = await findGh(io($))
     ghMissing = gh === null
     await $.command.register({ name: 'doorbell', description: 'Choose which repos and alerts Doorbell watches' })
     await reloadSettings($)
@@ -274,7 +297,7 @@ export const register: Register = (on, options) => {
 
   // A /clear keeps the process and its timers, so the lease stays with them.
   on('session.end', async ($, e, next) => {
-    if (e.reason !== 'clear' && dir) await release($, dir, sessionId, await $.clock.now())
+    if (e.reason !== 'clear' && dir) await release(io($), dir, sessionId, await $.clock.now())
     return next(e)
   })
 
@@ -288,7 +311,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const p = await read($, pane)
     const view = paneView(await read($, settings), p.repos, p.error, (await read($, state)).items, p.filter, p.drafts)
-    return drawPane($, e, view, p, {
+    return drawPane($.ui.resolve(e), (line) => $.ui.log(line), view, p, {
       press: (change) => press($, change),
       mode: (t, mode) => press($, (s) => setActionMode(s, t, mode)),
       draft: (t, text) => update($, pane, (q) => ({ ...q, drafts: { ...q.drafts, [t]: text } })),

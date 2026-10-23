@@ -94,9 +94,9 @@ const world = (on: On, clock: MockClock, opts: { files?: Record<string, string>;
     if (rest[0] === 'api') return result(0, w.gh.shift() ?? '')
     throw new Error(`unexpected argv: ${argv.join(' ')}`)
   })
-  on('ui.notify', ($, e) => {
+  on('ui.toast', ($, e) => {
     w.notify.push(e.text)
-    return { value: { isSent: true as const, channel: 'iterm2' as const } }
+    return { value: undefined }
   })
   on('ui.log', ($, e) => {
     w.logs.push(e.text)
@@ -214,7 +214,7 @@ test('first poll does not notify; a new review request on the next poll does', a
   expect(graphqlCalls(w)).toBe(2)
   expect(w.notify).toHaveLength(1)
   expect(w.notify[0]).toContain('app#2')
-  expect(w.osascript).toHaveLength(0)
+  expect(w.osascript).toHaveLength(1)
 })
 
 test('follower draws the band from the file and never notifies', async ($, on) => {

@@ -1,4 +1,4 @@
-import type { EngineInterface, ResolveInput } from 'claude-code'
+import type { ElementTable } from 'claude-code'
 
 import type { ActionMode, Item, Kind, PaneState, Settings, Trigger } from '../types'
 import { ICON } from './band'
@@ -99,10 +99,9 @@ const MODE_OPTIONS = [
   { value: 'background', label: 'auto · background' },
 ]
 
-export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneView, p: PaneState, on: PaneHandlers) {
-  const els = $.ui.resolve(e)
+export function drawPane(els: ElementTable, log: (line: string) => void, view: PaneView, p: PaneState, on: PaneHandlers) {
   const { Box, Button, Text } = els
-  const logged = (p: Promise<unknown>) => void p.catch((err) => $.ui.log(`doorbell: ${String(err)}`))
+  const logged = (p: Promise<unknown>) => void p.catch((err) => log(`doorbell: ${String(err)}`))
   const btn = (key: string, label: string, change: (s: Settings) => Settings) => (
     <Button key={key} onPress={() => logged(on.press(change))}>
       {label}
@@ -128,7 +127,6 @@ export async function drawPane($: EngineInterface, e: ResolveInput, view: PaneVi
             <els.Input
               key={`prompt:${t}`}
               value={view.actions[t].prompt}
-              rows={2}
               submitLabel="save"
               onInput={(v: string) => logged(on.draft(t, v))}
               onSubmit={(v: string) => logged(on.prompt(t, v))}
